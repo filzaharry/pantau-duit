@@ -5,9 +5,28 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 
+import os
+import time
+
+
 def generate_uuid7() -> uuid.UUID:
-    """Generate time-ordered UUIDv7."""
-    return uuid.uuid7()
+    """Generate time-ordered RFC 9562 UUIDv7."""
+    if hasattr(uuid, "uuid7"):
+        return uuid.uuid7()
+    try:
+        import uuid6
+        return uuid6.uuid7()
+    except ImportError:
+        pass
+
+    ns = time.time_ns()
+    timestamp_ms = ns // 1_000_000
+    time_bytes = timestamp_ms.to_bytes(6, byteorder="big")
+    rand_a = int.from_bytes(os.urandom(2), byteorder="big") & 0x0FFF
+    ver_and_rand = (0x7000 | rand_a).to_bytes(2, byteorder="big")
+    rand_b = int.from_bytes(os.urandom(8), byteorder="big") & 0x3FFFFFFFFFFFFFFF
+    var_and_rand = (0x8000000000000000 | rand_b).to_bytes(8, byteorder="big")
+    return uuid.UUID(bytes=time_bytes + ver_and_rand + var_and_rand)
 
 
 class UUIDPrimaryKeyMixin:
