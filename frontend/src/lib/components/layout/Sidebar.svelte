@@ -47,22 +47,23 @@
 	// Dynamic Navigation depending on whether user is Superuser or Regular Subscriber/Admin
 	const userNavGroups = [
 		{
-			title: 'FINANSIAL',
+			title: 'KEUANGAN SAYA',
 			items: [
 				{ href: '/dashboard', label: 'Ringkasan Saya', icon: LayoutDashboard },
 				{ href: '/transactions', label: 'Riwayat Transaksi', icon: Receipt },
 				{ href: '/accounts', label: 'Dompet & Rekening', icon: Wallet },
 				{ href: '/budgets', label: 'Batas Belanja', icon: PieChart },
 				{ href: '/goals', label: 'Target Tabungan', icon: Target },
-				{ href: '/investments', label: 'Investasi', icon: TrendingUp }
+				{ href: '/investments', label: 'Investasi & Aset', icon: TrendingUp }
 			]
 		},
 		{
-			title: 'SISTEM & LAPORAN',
+			title: 'LAPORAN & SISTEM',
 			items: [
-				{ href: '/reports', label: 'Laporan Finansial', icon: BarChart3 },
+				{ href: '/reports', label: 'Laporan Keuangan', icon: BarChart3 },
 				{ href: '/telegram', label: 'Bot Telegram', icon: Bot, badge: 'Aktif' },
-				{ href: '/settings', label: 'Pengaturan', icon: Settings }
+				{ href: '/settings', label: 'Pengaturan Akun', icon: Settings },
+				{ href: '/landing', label: 'Halaman Depan', icon: Sparkles }
 			]
 		}
 	];
@@ -72,7 +73,7 @@
 			title: 'TATA KELOLA PLATFORM',
 			items: [
 				{ href: '/dashboard', label: 'Ringkasan Platform', icon: Shield },
-				{ href: '/users', label: 'Pengguna', icon: Users, badge: '284' },
+				{ href: '/users', label: 'Pengguna', icon: Users },
 				{ href: '/roles', label: 'Role & Izin Akses', icon: KeyRound },
 				{ href: '/menus', label: 'Navigasi Menu', icon: FolderTree },
 				{ href: '/parameters', label: 'Parameter Sistem', icon: SlidersHorizontal }
@@ -162,34 +163,6 @@
 		? 'w-20'
 		: 'w-64'}"
 >
-	<!-- Workspace Mode Switcher (Personal vs Company) -->
-	{#if !collapsed}
-		<div class="px-3 pt-3 pb-1">
-			<div class="p-1 rounded-2xl bg-slate-100/90 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 flex items-center gap-1 text-[11px] font-semibold">
-				<button
-					type="button"
-					onclick={() => authStore.setWorkspaceMode('PERSONAL')}
-					class="flex-1 py-1.5 px-2 rounded-xl text-center transition-all flex items-center justify-center gap-1.5 {!authStore.isBusiness
-						? 'bg-white dark:bg-[#131B2A] text-[#007AFF] shadow-xs'
-						: 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}"
-				>
-					<Wallet class="w-3.5 h-3.5" />
-					<span>Personal</span>
-				</button>
-				<button
-					type="button"
-					onclick={() => authStore.setWorkspaceMode('BUSINESS')}
-					class="flex-1 py-1.5 px-2 rounded-xl text-center transition-all flex items-center justify-center gap-1.5 {authStore.isBusiness
-						? 'bg-white dark:bg-[#131B2A] text-purple-600 dark:text-purple-400 shadow-xs'
-						: 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}"
-				>
-					<Building2 class="w-3.5 h-3.5" />
-					<span>Company</span>
-				</button>
-			</div>
-		</div>
-	{/if}
-
 	<!-- Main Navigation Links with Category Headers -->
 	<nav class="flex-1 px-3 py-3 space-y-4 overflow-y-auto no-scrollbar">
 		{#each navGroups as group}

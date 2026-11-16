@@ -1,5 +1,11 @@
 <script lang="ts">
-	import DashboardPage from '../+page.svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
+	import UserDashboard from '$lib/components/dashboard/UserDashboard.svelte';
+	import SuperAdminDashboard from '$lib/components/dashboard/SuperAdminDashboard.svelte';
 </script>
 
-<DashboardPage />
+{#if authStore.isSuperuser}
+	<SuperAdminDashboard />
+{:else}
+	<UserDashboard />
+{/if}

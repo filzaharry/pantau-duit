@@ -1,15 +1,16 @@
 <script lang="ts">
 	import type { FinancialGoal } from '$lib/types';
 	import { formatRupiah, formatDate } from '$lib/utils/formatters';
-	import { Target, Plus } from 'lucide-svelte';
+	import { Target, Plus, Trash2 } from 'lucide-svelte';
 	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 
 	interface Props {
 		goal: FinancialGoal;
 		ontopup?: (g: FinancialGoal) => void;
+		ondelete?: (g: FinancialGoal) => void;
 	}
 
-	let { goal, ontopup }: Props = $props();
+	let { goal, ontopup, ondelete }: Props = $props();
 
 	const percentage = $derived(
 		goal.target_amount > 0 ? Math.round((goal.current_amount / goal.target_amount) * 100) : 0
@@ -48,15 +49,27 @@
 			<span class="text-slate-400"> / {formatRupiah(goal.target_amount, true)}</span>
 		</div>
 
-		{#if ontopup}
-			<button
-				type="button"
-				onclick={() => ontopup(goal)}
-				class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#007AFF]/10 text-[#007AFF] dark:text-[#0A84FF] hover:bg-[#007AFF]/20 transition-colors inline-flex items-center gap-1 cursor-pointer"
-			>
-				<Plus class="w-3 h-3" />
-				Setor
-			</button>
-		{/if}
+		<div class="flex items-center gap-1.5">
+			{#if ontopup}
+				<button
+					type="button"
+					onclick={() => ontopup(goal)}
+					class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#007AFF]/10 text-[#007AFF] dark:text-[#0A84FF] hover:bg-[#007AFF]/20 transition-colors inline-flex items-center gap-1 cursor-pointer"
+				>
+					<Plus class="w-3 h-3" />
+					Nabung
+				</button>
+			{/if}
+			{#if ondelete}
+				<button
+					type="button"
+					onclick={() => ondelete(goal)}
+					class="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+					title="Hapus Target Tabungan"
+				>
+					<Trash2 class="w-3.5 h-3.5" />
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>

@@ -31,8 +31,8 @@
 	// Form State
 	let userName = $state(authStore.user?.name || '');
 	let userEmail = $state(authStore.user?.email || '');
-	let telegramUsername = $state('@budisantoso_id');
-	let userPhone = $state('+62 812-3456-7890');
+	let telegramUsername = $state('');
+	let userPhone = $state('');
 	let timezone = $state(authStore.workspace?.timezone || 'Asia/Jakarta');
 
 	// Toggles

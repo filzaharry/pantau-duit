@@ -8,6 +8,7 @@
 		value?: string;
 		options: Option[];
 		label?: string;
+		placeholder?: string;
 		error?: string;
 		disabled?: boolean;
 		class?: string;
@@ -18,6 +19,7 @@
 		value = $bindable(''),
 		options,
 		label,
+		placeholder,
 		error,
 		disabled = false,
 		class: className = '',

@@ -30,7 +30,8 @@
 		Phone,
 		Mail,
 		Eye,
-		Edit3
+		Edit3,
+		Trash2
 	} from 'lucide-svelte';
 
 	// Sample data initial (aligned with seed data)
@@ -236,10 +237,10 @@
 		department_name: 'Engineering & Technology',
 		designation_title: 'Junior Engineer',
 		employment_type: EmploymentType.PERMANENT,
-		basic_salary: 8000000,
+		basic_salary: 0,
 		bank_name: 'BCA',
 		bank_account_number: '',
-		join_date: '2026-09-17'
+		join_date: ''
 	});
 
 	// Filtered list
@@ -302,6 +303,11 @@
 		isDetailModalOpen = true;
 	}
 
+	function handleDeleteEmployee(emp: Employee) {
+		employees = employees.filter((e) => e.id !== emp.id);
+		notificationStore.info(`Data karyawan ${emp.full_name} (${emp.nik}) berhasil dihapus.`, 'Karyawan Dihapus');
+	}
+
 	const columns: TableColumn<Employee>[] = [
 		{ key: 'nik', header: 'NIK', sortable: true, width: '90px' },
 		{ key: 'full_name', header: 'Nama Karyawan', sortable: true },
@@ -316,25 +322,16 @@
 
 <div class="space-y-6 max-w-7xl mx-auto w-full">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-		<div>
-			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
-				<div class="p-2 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-					<Users class="w-6 h-6" />
-				</div>
-				<span>Direktori SDM & Karyawan</span>
-			</h1>
-			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-				Kelola data personel, penempatan divisi, status kepegawaian, dan informasi rekening payroll
-			</p>
-		</div>
-
-		<div class="flex items-center gap-2 self-start sm:self-auto">
-			<Button variant="primary" onclick={() => (isAddModalOpen = true)}>
-				<UserPlus class="w-4 h-4 mr-1.5" />
-				<span>Tambah Karyawan</span>
-			</Button>
-		</div>
+	<div class="pb-2 border-b border-slate-200/80 dark:border-white/10">
+		<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+			<div class="p-2 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+				<Users class="w-6 h-6" />
+			</div>
+			<span>Direktori SDM & Karyawan</span>
+		</h1>
+		<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+			Kelola data personel, penempatan divisi, status kepegawaian, dan informasi rekening payroll
+		</p>
 	</div>
 
 	<!-- Statistics KPI Cards -->
@@ -392,34 +389,47 @@
 		</div>
 	</div>
 
-	<!-- Filter & Search Controls -->
-	<div class="p-4 rounded-3xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06] flex flex-col sm:flex-row gap-3 items-center justify-between">
-		<div class="w-full sm:w-80 relative">
-			<Search class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button & Create Button (Inline) -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
+			<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 			<input
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Cari nama, NIK, atau email..."
-				class="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-100/80 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#007AFF]"
+				class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
 			/>
 		</div>
 
-		<div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-			<Button variant="outline" size="sm" onclick={() => (isFilterModalOpen = true)}>
-				<Filter class="w-4 h-4 mr-1.5" />
+		<!-- Action Buttons: Filter & Tambah Karyawan (Aligned inline) -->
+		<div class="flex items-center gap-2">
+			<Button
+				variant="ghost"
+				onclick={() => (isFilterModalOpen = true)}
+				class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {activeFiltersCount > 0 ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+			>
+				<Filter class="w-3.5 h-3.5 mr-1.5" />
 				<span>Filter</span>
 				{#if activeFiltersCount > 0}
-					<span class="ml-1.5 px-1.5 py-0.5 rounded-full bg-[#007AFF] text-white text-[10px] font-bold">
-						{activeFiltersCount}
-					</span>
+					<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
 				{/if}
 			</Button>
 
 			{#if activeFiltersCount > 0 || searchQuery}
-				<Button variant="ghost" size="sm" onclick={resetFilters}>
+				<button
+					type="button"
+					onclick={resetFilters}
+					class="text-xs font-semibold text-rose-500 hover:underline px-2 cursor-pointer"
+				>
 					Reset
-				</Button>
+				</button>
 			{/if}
+
+			<Button variant="primary" onclick={() => (isAddModalOpen = true)} class="h-9 px-3.5 text-xs">
+				<UserPlus class="w-4 h-4 mr-1.5" />
+				<span>Tambah Karyawan</span>
+			</Button>
 		</div>
 	</div>
 
@@ -472,13 +482,13 @@
 					<StatusBadge status={emp.status} type="employee" size="sm" />
 				</td>
 
-				<!-- Action (Detail & Edit) -->
+				<!-- Action (Detail, Edit & Delete) -->
 				<td class="p-3.5 whitespace-nowrap text-center">
 					<div class="flex items-center justify-center gap-1">
 						<button
 							type="button"
 							onclick={() => openDetail(emp)}
-							class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+							class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
 							title="Lihat Detail Profil & Payroll"
 						>
 							<Eye class="w-4 h-4" />
@@ -486,10 +496,18 @@
 						<button
 							type="button"
 							onclick={() => openDetail(emp)}
-							class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+							class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
 							title="Edit Data Karyawan"
 						>
 							<Edit3 class="w-4 h-4" />
+						</button>
+						<button
+							type="button"
+							onclick={() => handleDeleteEmployee(emp)}
+							class="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+							title="Hapus Karyawan"
+						>
+							<Trash2 class="w-4 h-4" />
 						</button>
 					</div>
 				</td>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import GlassSurface from '$lib/components/ui/GlassSurface.svelte';
@@ -7,24 +8,32 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { Send, Lock, Mail, ArrowRight } from 'lucide-svelte';
 
-	let email = $state('alex@example.com');
-	let password = $state('password123');
+	let email = $state('');
+	let password = $state('');
 	let loading = $state(false);
 
-	async function handleLogin(customEmail?: string) {
+	const redirectUrl = $derived(page.url.searchParams.get('redirect') || '/dashboard');
+
+	async function handleLogin(customEmail?: string, customPassword?: string) {
 		loading = true;
 		const targetEmail = customEmail || email;
-		await authStore.login(targetEmail, password);
-		notificationStore.toast(`Masuk sebagai ${authStore.user?.name} (${authStore.user?.role})`, 'success');
-		loading = false;
-		goto('/dashboard');
-	}
+		const targetPassword = customPassword !== undefined ? customPassword : password;
 
-	function handleTelegramLogin() {
-		notificationStore.toast('Membuka otentikasi via Telegram Bot...', 'info');
-		setTimeout(() => {
-			handleLogin('budi@pantauduit.id');
-		}, 600);
+		if (!targetEmail) {
+			notificationStore.toast('Silakan masukkan email Anda', 'error');
+			loading = false;
+			return;
+		}
+
+		const res = await authStore.login(targetEmail, targetPassword);
+		if (res.success) {
+			notificationStore.toast(`Masuk sebagai ${authStore.user?.name} (${authStore.user?.role})`, 'success');
+			const target = (redirectUrl && !redirectUrl.startsWith('/login')) ? redirectUrl : '/dashboard';
+			goto(target, { replaceState: true });
+		} else {
+			notificationStore.toast(res.error || 'Email atau kata sandi tidak valid', 'error');
+		}
+		loading = false;
 	}
 </script>
 
@@ -44,23 +53,6 @@
 			<p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
 				Personal Finance Command Center berbasis Telegram
 			</p>
-		</div>
-
-
-		<!-- Telegram 1-Click Login -->
-		<button
-			type="button"
-			onclick={handleTelegramLogin}
-			class="w-full py-3 px-4 rounded-2xl bg-[#0088cc] hover:bg-[#0077b5] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-[#0088cc]/20 transition-all active:scale-[0.98] mb-5"
-		>
-			<Send class="w-4 h-4" />
-			<span>Masuk Instan via Telegram Bot</span>
-		</button>
-
-		<div class="relative flex py-1 items-center mb-5">
-			<div class="flex-grow border-t border-slate-200 dark:border-white/10"></div>
-			<span class="flex-shrink mx-3 text-[10px] text-slate-400 font-semibold uppercase">Atau Form Manual</span>
-			<div class="flex-grow border-t border-slate-200 dark:border-white/10"></div>
 		</div>
 
 		<!-- Form -->
@@ -89,19 +81,9 @@
 			</div>
 
 			<Button type="submit" variant="primary" class="w-full mt-2" disabled={loading}>
-				<span>{loading ? 'Memproses...' : 'Masuk ke Dasbor'}</span>
+				<span>{loading ? 'Memproses...' : 'Masuk'}</span>
 				<ArrowRight class="w-4 h-4" />
 			</Button>
 		</form>
-
-		<!-- Footer -->
-		<div class="text-center mt-6 pt-4 border-t border-slate-100 dark:border-white/5">
-			<p class="text-xs text-slate-500 dark:text-slate-400">
-				Belum punya akun?
-				<a href="/register" class="font-semibold text-[#007AFF] hover:underline">
-					Daftar Sekarang
-				</a>
-			</p>
-		</div>
 	</GlassSurface>
 </div>

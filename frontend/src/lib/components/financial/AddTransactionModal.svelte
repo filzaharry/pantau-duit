@@ -3,12 +3,13 @@
 	import AmountInput from '$lib/components/ui/AmountInput.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import SearchableSelect from '$lib/components/ui/SearchableSelect.svelte';
+	import CategorySuggestSelect from '$lib/components/ui/CategorySuggestSelect.svelte';
 	import DatePicker from '$lib/components/ui/DatePicker.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import type { TransactionType } from '$lib/types';
-	import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from 'lucide-svelte';
+	import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Wallet, Plus, AlertCircle } from 'lucide-svelte';
 
 	interface Props {
 		open?: boolean;
@@ -25,6 +26,8 @@
 	let categoryId = $state(financialStore.categories.find((c) => c.type === 'EXPENSE')?.id || '');
 	let transactionDate = $state(new Date().toISOString().split('T')[0]);
 	let error = $state('');
+
+	const selectedAccount = $derived(financialStore.accounts.find((a) => a.id === accountId));
 
 	// Keep account & category in sync with active financial store data
 	$effect(() => {
@@ -78,8 +81,20 @@
 			}))
 	);
 
-	function handleSubmit() {
+	let isSubmitting = $state(false);
+
+	async function handleSubmit() {
 		error = '';
+
+		if (financialStore.accounts.length === 0) {
+			error = 'Anda belum memiliki dompet atau rekening. Minimal harus ada 1 dompet/rekening sebelum mencatat transaksi.';
+			return;
+		}
+
+		if (transactionType === 'TRANSFER' && financialStore.accounts.length < 2) {
+			error = 'Transfer antar rekening membutuhkan minimal 2 dompet/rekening terdaftar.';
+			return;
+		}
 
 		if (amount <= 0) {
 			error = 'Jumlah nominal harus lebih dari 0.';
@@ -107,31 +122,43 @@
 			}
 		}
 
-		// Dispatch to financial store
-		financialStore.addTransaction({
-			account_id: accountId,
-			destination_account_id: transactionType === 'TRANSFER' ? destinationAccountId : undefined,
-			category_id: transactionType !== 'TRANSFER' ? categoryId : undefined,
-			transaction_type: transactionType,
-			amount,
-			currency: 'IDR',
-			transaction_date: `${transactionDate}T12:00:00Z`,
-			description: description.trim(),
-			status: 'POSTED',
-			source: 'MANUAL_WEB'
-		});
+		isSubmitting = true;
+		try {
+			// Dispatch to financial store and persist to real database
+			const res = await financialStore.addTransaction({
+				account_id: accountId,
+				destination_account_id: transactionType === 'TRANSFER' ? destinationAccountId : undefined,
+				category_id: transactionType !== 'TRANSFER' ? categoryId : undefined,
+				transaction_type: transactionType,
+				amount,
+				currency: 'IDR',
+				transaction_date: `${transactionDate}T12:00:00Z`,
+				description: description.trim(),
+				status: 'COMPLETED',
+				source: 'DASHBOARD'
+			});
 
-		notificationStore.toast(
-			transactionType === 'TRANSFER'
-				? 'Transfer berhasil dicatat!'
-				: transactionType === 'EXPENSE'
-					? 'Pengeluaran berhasil dicatat!'
-					: 'Pemasukan berhasil dicatat!',
-			'success'
-		);
+			if (!res) {
+				error = 'Gagal menyimpan transaksi ke database. Silakan coba lagi.';
+				return;
+			}
 
-		resetForm();
-		open = false;
+			notificationStore.toast(
+				transactionType === 'TRANSFER'
+					? 'Transfer berhasil dicatat!'
+					: transactionType === 'EXPENSE'
+						? 'Pengeluaran berhasil dicatat!'
+						: 'Pemasukan berhasil dicatat!',
+				'success'
+			);
+
+			resetForm();
+			open = false;
+		} catch (err: any) {
+			error = err?.message || 'Terjadi kesalahan sistem saat menyimpan transaksi.';
+		} finally {
+			isSubmitting = false;
+		}
 	}
 
 	function resetForm() {
@@ -148,113 +175,166 @@
 	description="Catat pengeluaran, pemasukan, atau transfer antar rekening"
 	{onclose}
 >
-	<div class="space-y-4">
-		<!-- Transaction Type Selector -->
-		<div class="p-1 rounded-xl bg-slate-100 dark:bg-white/5 grid grid-cols-3 gap-1">
-			<button
-				type="button"
-				onclick={() => (transactionType = 'EXPENSE')}
-				class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'EXPENSE'
-					? 'bg-rose-500 text-white'
-					: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
-			>
-				<ArrowUpRight class="w-3.5 h-3.5" />
-				<span>Pengeluaran</span>
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (transactionType = 'INCOME')}
-				class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'INCOME'
-					? 'bg-emerald-500 text-white'
-					: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
-			>
-				<ArrowDownLeft class="w-3.5 h-3.5" />
-				<span>Pemasukan</span>
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (transactionType = 'TRANSFER')}
-				class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'TRANSFER'
-					? 'bg-[#007AFF] text-white'
-					: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
-			>
-				<ArrowLeftRight class="w-3.5 h-3.5" />
-				<span>Transfer</span>
-			</button>
+	{#if financialStore.accounts.length === 0}
+		<div class="py-6 px-2 text-center space-y-4">
+			<div class="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 mx-auto flex items-center justify-center border border-amber-500/20">
+				<Wallet class="w-7 h-7" />
+			</div>
+			<div class="space-y-1.5 max-w-sm mx-auto">
+				<h3 class="text-base font-semibold text-slate-900 dark:text-white">
+					Belum Ada Dompet / Rekening
+				</h3>
+				<p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+					Anda belum memiliki rekening bank atau dompet digital aktif. Minimal harus ada 1 dompet atau rekening terdaftar terlebih dahulu sebelum dapat mencatat transaksi keuangan.
+				</p>
+			</div>
+			<div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+				<Button variant="ghost" onclick={() => (open = false)} class="w-full sm:w-auto text-xs">
+					Tutup
+				</Button>
+				<a
+					href="/accounts"
+					onclick={() => (open = false)}
+					class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-[#007AFF] text-white text-xs font-semibold hover:bg-blue-600 transition-colors cursor-pointer"
+				>
+					<Plus class="w-3.5 h-3.5" />
+					<span>Buat Rekening Pertama</span>
+				</a>
+			</div>
 		</div>
+	{:else}
+		<div class="space-y-4">
+			<!-- Transaction Type Selector -->
+			<div class="p-1 rounded-xl bg-slate-100 dark:bg-white/5 grid grid-cols-3 gap-1">
+				<button
+					type="button"
+					onclick={() => (transactionType = 'EXPENSE')}
+					class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'EXPENSE'
+						? 'bg-rose-500 text-white'
+						: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
+				>
+					<ArrowUpRight class="w-3.5 h-3.5" />
+					<span>Pengeluaran</span>
+				</button>
 
-		{#if transactionType === 'TRANSFER'}
-			<div class="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
-				ℹ️ <strong>Aturan Bisnis:</strong> Transfer antar rekening mencatat mutasi saldo secara akurat tanpa mempengaruhi total pengeluaran belanja bulanan.
+				<button
+					type="button"
+					onclick={() => (transactionType = 'INCOME')}
+					class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'INCOME'
+						? 'bg-emerald-500 text-white'
+						: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
+				>
+					<ArrowDownLeft class="w-3.5 h-3.5" />
+					<span>Pemasukan</span>
+				</button>
+
+				<button
+					type="button"
+					onclick={() => (transactionType = 'TRANSFER')}
+					class="flex items-center justify-center gap-1.5 h-8.5 rounded-lg text-xs font-medium transition-all {transactionType === 'TRANSFER'
+						? 'bg-[#007AFF] text-white'
+						: 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
+				>
+					<ArrowLeftRight class="w-3.5 h-3.5" />
+					<span>Transfer</span>
+				</button>
 			</div>
-		{/if}
 
-		<!-- Amount Input -->
-		<AmountInput bind:value={amount} label="Jumlah Nominal" />
+			{#if transactionType === 'TRANSFER'}
+				{#if financialStore.accounts.length < 2}
+					<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+						<AlertCircle class="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+						<span>
+							<strong>Perhatian:</strong> Transfer saldo membutuhkan minimal 2 rekening terdaftar (rekening asal dan tujuan). Silakan tambahkan rekening kedua terlebih dahulu.
+						</span>
+					</div>
+				{:else}
+					<div class="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
+						ℹ️ <strong>Aturan Bisnis:</strong> Transfer antar rekening mencatat mutasi saldo secara akurat tanpa mempengaruhi total pengeluaran belanja bulanan.
+					</div>
+				{/if}
+			{/if}
 
-		<!-- Description -->
-		<Input
-			bind:value={description}
-			label="Deskripsi / Catatan"
-			placeholder={transactionType === 'EXPENSE'
-				? 'Contoh: Makan siang nasi padang'
-				: transactionType === 'INCOME'
-					? 'Contoh: Gaji bulanan / Freelance'
-					: 'Contoh: Pindah saldo ke e-wallet'}
-		/>
+			<!-- Amount Input with Percentage of Account Balance -->
+			<AmountInput
+				bind:value={amount}
+				label="Jumlah Nominal"
+				referenceBalance={transactionType === 'INCOME' ? financialStore.totalBalance : selectedAccount?.current_balance}
+				balanceLabel={selectedAccount ? `Saldo ${selectedAccount.name}` : 'Saldo Tabungan'}
+			/>
 
-		<!-- Custom Indonesian Calendar DatePicker (Replacing Native HTML Date) -->
-		<DatePicker
-			bind:value={transactionDate}
-			label="Tanggal Transaksi"
-		/>
+			<!-- Description -->
+			<Input
+				bind:value={description}
+				label="Deskripsi / Catatan"
+				placeholder={transactionType === 'EXPENSE'
+					? 'Contoh: Makan siang nasi padang'
+					: transactionType === 'INCOME'
+						? 'Contoh: Gaji bulanan / Freelance'
+						: 'Contoh: Pindah saldo ke e-wallet'}
+			/>
 
-		<!-- Account Selection with Search Suggest Dropdown (Limit Max 10, Overflow Auto) -->
-		{#if transactionType === 'TRANSFER'}
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-				<SearchableSelect
-					bind:value={accountId}
-					options={accountOptions}
-					label="Dari Rekening (Asal)"
-					placeholder="Pilih rekening asal..."
-				/>
+			<!-- Custom Indonesian Calendar DatePicker (Replacing Native HTML Date) -->
+			<DatePicker
+				bind:value={transactionDate}
+				label="Tanggal Transaksi"
+			/>
 
-				<SearchableSelect
-					bind:value={destinationAccountId}
-					options={destAccountOptions}
-					label="Ke Rekening (Tujuan)"
-					placeholder="Pilih rekening tujuan..."
-				/>
-			</div>
-		{:else}
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-				<SearchableSelect
-					bind:value={accountId}
-					options={accountOptions}
-					label="Rekening / Dompet"
-					placeholder="Pilih rekening..."
-				/>
+			<!-- Account Selection with Search Suggest Dropdown (Limit Max 10, Overflow Auto) -->
+			{#if transactionType === 'TRANSFER'}
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+					<SearchableSelect
+						bind:value={accountId}
+						options={accountOptions}
+						label="Dari Rekening (Asal)"
+						placeholder="Pilih rekening asal..."
+					/>
 
-				<SearchableSelect
-					bind:value={categoryId}
-					options={categoryOptions}
-					label="Kategori"
-					placeholder="Pilih kategori..."
-				/>
-			</div>
-		{/if}
+					<SearchableSelect
+						bind:value={destinationAccountId}
+						options={destAccountOptions}
+						label="Ke Rekening (Tujuan)"
+						placeholder="Pilih rekening tujuan..."
+					/>
+				</div>
+			{:else}
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+					<SearchableSelect
+						bind:value={accountId}
+						options={accountOptions}
+						label="Rekening / Dompet"
+						placeholder="Pilih rekening..."
+					/>
 
-		{#if error}
-			<p class="text-xs font-medium text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">
-				{error}
-			</p>
-		{/if}
-	</div>
+					<CategorySuggestSelect
+						bind:value={categoryId}
+						categoryType={transactionType === 'EXPENSE' ? 'EXPENSE' : 'INCOME'}
+						label="Kategori"
+						placeholder="Ketik atau pilih kategori..."
+					/>
+				</div>
+			{/if}
+
+			{#if error}
+				<p class="text-xs font-medium text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">
+					{error}
+				</p>
+			{/if}
+		</div>
+	{/if}
 
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (open = false)}>Batal</Button>
-		<Button variant="primary" onclick={handleSubmit}>Simpan Transaksi</Button>
+		{#if financialStore.accounts.length === 0}
+			<Button variant="ghost" onclick={() => (open = false)}>Tutup</Button>
+		{:else}
+			<Button variant="ghost" onclick={() => (open = false)}>Batal</Button>
+			<Button
+				variant="primary"
+				onclick={handleSubmit}
+				disabled={isSubmitting || (transactionType === 'TRANSFER' && financialStore.accounts.length < 2)}
+			>
+				{isSubmitting ? 'Menyimpan...' : 'Simpan Transaksi'}
+			</Button>
+		{/if}
 	{/snippet}
 </Modal>

@@ -224,6 +224,15 @@
 							<span>Pengaturan</span>
 						</a>
 
+						<a
+							href="/landing"
+							onclick={() => (isUserMenuOpen = false)}
+							class="flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+						>
+							<Sparkles class="w-3.5 h-3.5" />
+							<span>Halaman Depan (Landing)</span>
+						</a>
+
 						<button
 							type="button"
 							onclick={() => { isUserMenuOpen = false; authStore.requestLogout(); }}

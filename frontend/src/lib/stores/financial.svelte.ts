@@ -1,60 +1,13 @@
 import type { Account, Category, Transaction, Budget, FinancialGoal, InvestmentHolding } from '$lib/types';
+import { apiFetch } from '$lib/services/api';
 import { notificationStore } from './notifications.svelte';
 import { authStore } from './auth.svelte';
 
 class FinancialStore {
 	// ==========================================
-	// 1. DATA PRIBADI (SUBSCRIBER)
+	// 1. DATA PRIBADI (SUBSCRIBER) - DEFAULT KOSONG (0 DATA)
 	// ==========================================
-	personalAccounts = $state<Account[]>([
-		{
-			id: 'acc-1',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			name: 'BCA Tabungan',
-			type: 'BANK',
-			institution_name: 'Bank Central Asia',
-			account_number: '1234567890',
-			currency: 'IDR',
-			opening_balance: 10000000,
-			current_balance: 21485000,
-			balance: 21485000,
-			status: 'ACTIVE',
-			is_active: true,
-			color: '#00529C',
-			icon: 'building-columns'
-		},
-		{
-			id: 'acc-2',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			name: 'GoPay Wallet',
-			type: 'E_WALLET',
-			institution_name: 'GoTo Financial',
-			account_number: '08123456789',
-			currency: 'IDR',
-			opening_balance: 500000,
-			current_balance: 1000000,
-			balance: 1000000,
-			status: 'ACTIVE',
-			is_active: true,
-			color: '#00AED6',
-			icon: 'wallet'
-		},
-		{
-			id: 'acc-3',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			name: 'Cash Dompet',
-			type: 'CASH',
-			institution_name: 'Uang Tunai',
-			currency: 'IDR',
-			opening_balance: 250000,
-			current_balance: 250000,
-			balance: 250000,
-			status: 'ACTIVE',
-			is_active: true,
-			color: '#10B981',
-			icon: 'banknote'
-		}
-	]);
+	personalAccounts = $state<Account[]>([]);
 
 	personalCategories = $state<Category[]>([
 		{ id: 'cat-1', name: 'Makanan & Minuman', slug: 'makanan-minuman', type: 'EXPENSE', icon: 'utensils', color: '#EF4444', is_system: true },
@@ -67,171 +20,13 @@ class FinancialStore {
 		{ id: 'cat-8', name: 'Hasil Investasi', slug: 'hasil-investasi', type: 'INCOME', icon: 'chart-line', color: '#22C55E', is_system: true }
 	]);
 
-	personalTransactions = $state<Transaction[]>([
-		{
-			id: 'tx-1',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			account_id: 'acc-1',
-			destination_account_id: 'acc-2',
-			amount: 500000,
-			currency: 'IDR',
-			transaction_type: 'TRANSFER',
-			transaction_date: new Date(Date.now() - 1000 * 60 * 60 * 1).toISOString(),
-			source: 'DASHBOARD',
-			status: 'COMPLETED',
-			description: 'Top up GoPay dari BCA',
-			created_at: new Date(Date.now() - 1000 * 60 * 60 * 1).toISOString(),
-			account_name: 'BCA Tabungan',
-			destination_account_name: 'GoPay Wallet'
-		},
-		{
-			id: 'tx-2',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			account_id: 'acc-1',
-			category_id: 'cat-1',
-			amount: 15000,
-			currency: 'IDR',
-			transaction_type: 'EXPENSE',
-			transaction_date: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-			source: 'TELEGRAM',
-			status: 'COMPLETED',
-			description: 'Bakso Urat Pak Kumis',
-			notes: 'Input via Telegram Bot',
-			metadata_json: { raw_input: 'bakso;makanan;15000', confidence: 0.99 },
-			created_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-			account_name: 'BCA Tabungan',
-			category_name: 'Makanan & Minuman',
-			category_icon: 'utensils',
-			category_color: '#EF4444'
-		},
-		{
-			id: 'tx-3',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			account_id: 'acc-1',
-			category_id: 'cat-6',
-			amount: 12000000,
-			currency: 'IDR',
-			transaction_type: 'INCOME',
-			transaction_date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-			source: 'DASHBOARD',
-			status: 'COMPLETED',
-			description: 'Gaji Bulanan PT Maju Jaya',
-			created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-			account_name: 'BCA Tabungan',
-			category_name: 'Gaji Bulanan',
-			category_icon: 'money-bill-wave',
-			category_color: '#10B981'
-		}
-	]);
+	personalTransactions = $state<Transaction[]>([]);
 
-	personalBudgets = $state<Budget[]>([
-		{
-			id: 'b-1',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			category_id: 'cat-1',
-			name: 'Makanan & Minuman',
-			amount: 2000000,
-			limit_amount: 2000000,
-			spent_amount: 1615000,
-			period: 'MONTHLY',
-			start_date: '2026-09-01',
-			end_date: '2026-09-30',
-			alert_threshold_percent: 80,
-			is_active: true,
-			category_name: 'Makanan & Minuman',
-			category_icon: 'utensils'
-		},
-		{
-			id: 'b-2',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			category_id: 'cat-2',
-			name: 'Transportasi & Bensin',
-			amount: 1000000,
-			limit_amount: 1000000,
-			spent_amount: 320000,
-			period: 'MONTHLY',
-			start_date: '2026-09-01',
-			end_date: '2026-09-30',
-			alert_threshold_percent: 80,
-			is_active: true,
-			category_name: 'Transportasi',
-			category_icon: 'car'
-		},
-		{
-			id: 'b-3',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			category_id: 'cat-3',
-			name: 'Tagihan Listrik & WiFi',
-			amount: 800000,
-			limit_amount: 800000,
-			spent_amount: 450000,
-			period: 'MONTHLY',
-			start_date: '2026-09-01',
-			end_date: '2026-09-30',
-			alert_threshold_percent: 80,
-			is_active: true,
-			category_name: 'Listrik & Internet',
-			category_icon: 'bolt'
-		}
-	]);
+	personalBudgets = $state<Budget[]>([]);
 
-	personalGoals = $state<FinancialGoal[]>([
-		{
-			id: 'g-1',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			name: 'Dana Darurat (6 Bulan)',
-			target_amount: 50000000,
-			current_amount: 25000000,
-			target_date: '2027-03-31',
-			status: 'IN_PROGRESS',
-			color: '#10B981',
-			icon: 'shield-check'
-		},
-		{
-			id: 'g-2',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			name: 'MacBook Pro M4',
-			target_amount: 32000000,
-			current_amount: 18000000,
-			target_date: '2026-12-31',
-			status: 'IN_PROGRESS',
-			color: '#007AFF',
-			icon: 'laptop'
-		}
-	]);
+	personalGoals = $state<FinancialGoal[]>([]);
 
-	personalInvestments = $state<InvestmentHolding[]>([
-		{
-			id: 'inv-1',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			account_id: 'acc-1',
-			asset_id: 'asset-1',
-			symbol: 'BBCA',
-			name: 'Bank Central Asia Tbk',
-			asset_class: 'STOCK',
-			quantity: 1500,
-			buy_price_avg: 9450,
-			current_price: 10250,
-			currency: 'IDR',
-			unit_label: 'lembar',
-			updated_at: new Date().toISOString()
-		},
-		{
-			id: 'inv-2',
-			tenant_id: '019934a1-0000-7000-8000-000000000001',
-			account_id: 'acc-1',
-			asset_id: 'asset-2',
-			symbol: 'BTC',
-			name: 'Bitcoin',
-			asset_class: 'CRYPTO',
-			quantity: 0.085,
-			buy_price_avg: 950000000,
-			current_price: 1050000000,
-			currency: 'IDR',
-			unit_label: 'BTC',
-			updated_at: new Date().toISOString()
-		}
-	]);
+	personalInvestments = $state<InvestmentHolding[]>([]);
 
 	// ==========================================
 	// 2. DATA PLATFORM / SISTEM (SUPERUSER)
@@ -759,79 +554,141 @@ class FinancialStore {
 		this.investments.reduce((sum, inv) => sum + Number(inv.quantity * inv.current_price), 0)
 	);
 
+	constructor() {
+		if (typeof window !== 'undefined') {
+			this.loadFromDatabase();
+		}
+	}
+
+	reset() {
+		this.personalAccounts = [];
+		this.personalTransactions = [];
+		this.personalBudgets = [];
+		this.personalGoals = [];
+		this.personalInvestments = [];
+	}
+
+	async loadFromDatabase() {
+		try {
+			const [accRes, txRes, catRes, budgetRes, goalRes, invRes] = await Promise.all([
+				apiFetch<Account[]>('/accounts'),
+				apiFetch<Transaction[]>('/transactions'),
+				apiFetch<Category[]>('/categories'),
+				apiFetch<Budget[]>('/budgets'),
+				apiFetch<FinancialGoal[]>('/goals'),
+				apiFetch<InvestmentHolding[]>('/investments')
+			]);
+
+			if (accRes.data) {
+				this.personalAccounts = accRes.data;
+				this.platformAccounts = accRes.data;
+			}
+			if (txRes.data) {
+				this.personalTransactions = txRes.data;
+				this.platformTransactions = txRes.data;
+			}
+			if (catRes.data && catRes.data.length > 0) {
+				this.personalCategories = catRes.data;
+				this.platformCategories = catRes.data;
+			}
+			if (budgetRes.data) {
+				this.personalBudgets = budgetRes.data;
+				this.platformBudgets = budgetRes.data;
+			}
+			if (goalRes.data) {
+				this.personalGoals = goalRes.data;
+				this.platformGoals = goalRes.data;
+			}
+			if (invRes.data) {
+				this.personalInvestments = invRes.data;
+				this.platformInvestments = invRes.data;
+			}
+		} catch (err) {
+			console.warn('Fallback to local cache:', err);
+		}
+	}
+
 	// ==========================================
 	// MUTATION ACTIONS
 	// ==========================================
-	addTransaction(payload: Partial<Transaction>) {
-		const id = (authStore.isSuperuser ? 'ptx-' : 'tx-') + Math.random().toString(36).substring(2, 9);
-		const account = this.accounts.find((a) => a.id === payload.account_id);
-		const destAccount = payload.destination_account_id
-			? this.accounts.find((a) => a.id === payload.destination_account_id)
-			: undefined;
-		const category = this.categories.find((c) => c.id === payload.category_id);
+	async addTransaction(payload: Partial<Transaction>) {
+		if (this.accounts.length === 0) {
+			notificationStore.showToast('Minimal harus ada 1 dompet atau rekening sebelum mencatat transaksi.', 'error');
+			return null;
+		}
 
 		const amount = Number(payload.amount || 0);
 
-		const newTx: Transaction = {
-			id,
-			tenant_id: authStore.workspace?.id || '019934a1-0000-7000-8000-000000000001',
-			account_id: payload.account_id || this.accounts[0]?.id || '',
-			destination_account_id: payload.destination_account_id,
-			category_id: payload.category_id,
-			amount,
-			currency: 'IDR',
-			transaction_type: payload.transaction_type || 'EXPENSE',
-			transaction_date: payload.transaction_date || new Date().toISOString(),
-			source: payload.source || 'DASHBOARD',
-			status: 'COMPLETED',
-			description: payload.description || 'Transaksi',
-			notes: payload.notes,
-			created_at: new Date().toISOString(),
-			account_name: account?.name,
-			destination_account_name: destAccount?.name,
-			category_name: category?.name,
-			category_icon: category?.icon,
-			category_color: category?.color,
-			account: account,
-			category: category
-		};
-
-		// Atomic Balance Ledger Update
-		if (account) {
-			if (newTx.transaction_type === 'EXPENSE') {
-				account.current_balance = Number(account.current_balance || 0) - amount;
-				account.balance = account.current_balance;
-			} else if (newTx.transaction_type === 'INCOME') {
-				account.current_balance = Number(account.current_balance || 0) + amount;
-				account.balance = account.current_balance;
-			} else if (newTx.transaction_type === 'TRANSFER' && destAccount) {
-				account.current_balance = Number(account.current_balance || 0) - amount;
-				account.balance = account.current_balance;
-				destAccount.current_balance = Number(destAccount.current_balance || 0) + amount;
-				destAccount.balance = destAccount.current_balance;
+		// Synchronize directly with PostgreSQL database
+		try {
+			const res = await apiFetch<any>('/transactions', {
+				method: 'POST',
+				body: JSON.stringify({
+					account_id: payload.account_id,
+					destination_account_id: payload.destination_account_id,
+					category_id: payload.category_id,
+					amount,
+					transaction_type: payload.transaction_type || 'EXPENSE',
+					transaction_date: payload.transaction_date,
+					source: payload.source === 'TELEGRAM' ? 'TELEGRAM' : 'DASHBOARD',
+					description: payload.description || 'Transaksi',
+					notes: payload.notes
+				})
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Transaksi berhasil dicatat ke database!', 'success');
+				return res.data;
 			}
+			throw new Error(res.error || 'Gagal menyimpan transaksi ke database');
+		} catch (err: any) {
+			console.error('API sync failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menyimpan transaksi ke database', 'error');
+			return null;
 		}
-
-		// Update Budget if applicable
-		if (newTx.transaction_type === 'EXPENSE' && newTx.category_id) {
-			const budget = this.budgets.find((b) => b.category_id === newTx.category_id);
-			if (budget) {
-				budget.spent_amount = (budget.spent_amount || 0) + amount;
-				if (budget.spent_amount >= (budget.limit_amount || budget.amount) * (budget.alert_threshold_percent / 100)) {
-					notificationStore.showToast(
-						`Budget ${budget.name} telah melebihi batas ${budget.alert_threshold_percent}%!`,
-						'warning'
-					);
-				}
-			}
-		}
-
-		this.transactions = [newTx, ...this.transactions];
-		notificationStore.showToast('Transaksi berhasil dicatat!', 'success');
-		return newTx;
 	}
 
-	deleteTransaction(id: string) {
+	async updateTransaction(id: string, payload: { description?: string; amount?: number; category_id?: string; notes?: string }) {
+		try {
+			await apiFetch(`/transactions/${id}`, {
+				method: 'PUT',
+				body: JSON.stringify(payload)
+			});
+			await this.loadFromDatabase();
+			notificationStore.showToast('Transaksi berhasil diperbarui!', 'success');
+			return;
+		} catch (err) {
+			console.warn('API update transaction failed:', err);
+		}
+
+		// Fallback local update
+		this.transactions = this.transactions.map((t) => {
+			if (t.id === id) {
+				const cat = payload.category_id ? this.categories.find((c) => c.id === payload.category_id) : undefined;
+				return {
+					...t,
+					description: payload.description !== undefined ? payload.description : t.description,
+					amount: payload.amount !== undefined ? payload.amount : t.amount,
+					category_id: payload.category_id !== undefined ? payload.category_id : t.category_id,
+					category_name: cat ? cat.name : t.category_name,
+					notes: payload.notes !== undefined ? payload.notes : t.notes
+				};
+			}
+			return t;
+		});
+		notificationStore.showToast('Transaksi berhasil diperbarui!', 'success');
+	}
+
+	async deleteTransaction(id: string) {
+		try {
+			await apiFetch(`/transactions/${id}`, { method: 'DELETE' });
+			await this.loadFromDatabase();
+			notificationStore.showToast('Transaksi berhasil dihapus dari database', 'info');
+			return;
+		} catch (err) {
+			console.warn('API delete sync failed:', err);
+		}
+
 		const tx = this.transactions.find((t) => t.id === id);
 		if (tx) {
 			const account = this.accounts.find((a) => a.id === tx.account_id);
@@ -857,6 +714,227 @@ class FinancialStore {
 
 			this.transactions = this.transactions.filter((t) => t.id !== id);
 			notificationStore.showToast('Transaksi berhasil dihapus', 'info');
+		}
+	}
+
+	async addAccount(payload: { name: string; type: string; opening_balance?: number; account_number?: string; institution_name?: string }) {
+		try {
+			const res = await apiFetch<any>('/accounts', {
+				method: 'POST',
+				body: JSON.stringify({
+					name: payload.name,
+					type: payload.type,
+					opening_balance: payload.opening_balance || 0,
+					account_number: payload.account_number || ''
+				})
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Rekening baru berhasil ditambahkan!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menambahkan rekening');
+		} catch (err: any) {
+			console.error('API add account failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menambahkan rekening ke database', 'error');
+			return null;
+		}
+	}
+
+	async deleteAccount(id: string) {
+		try {
+			await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
+			await this.loadFromDatabase();
+			notificationStore.showToast('Rekening berhasil dihapus dari database', 'info');
+			return;
+		} catch (err) {
+			console.warn('API delete account failed:', err);
+		}
+		this.accounts = this.accounts.filter((a) => a.id !== id);
+		notificationStore.showToast('Rekening berhasil dihapus', 'info');
+	}
+
+	async addBudget(payload: { category_id: string; amount: number; name?: string; alert_threshold_percent?: number }) {
+		try {
+			const res = await apiFetch<any>('/budgets', {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Batas pengeluaran berhasil disimpan!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menyimpan batas pengeluaran');
+		} catch (err: any) {
+			console.error('API add budget failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menyimpan batas pengeluaran', 'error');
+			return null;
+		}
+	}
+
+	async deleteBudget(id: string) {
+		try {
+			await apiFetch(`/budgets/${id}`, { method: 'DELETE' });
+			await this.loadFromDatabase();
+			notificationStore.showToast('Batas pengeluaran berhasil dihapus', 'info');
+		} catch (err: any) {
+			console.error('API delete budget failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus batas pengeluaran', 'error');
+		}
+	}
+
+	async addGoal(payload: { name: string; target_amount: number; target_date?: string; initial_deposit?: number; account_id?: string; color?: string; icon?: string }) {
+		try {
+			const res = await apiFetch<any>('/goals', {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Target tabungan baru berhasil dibuat!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal membuat target tabungan');
+		} catch (err: any) {
+			console.error('API add goal failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal membuat target tabungan', 'error');
+			return null;
+		}
+	}
+
+	async contributeGoal(goalId: string, payload: { account_id: string; amount: number; notes?: string }) {
+		try {
+			const res = await apiFetch<any>(`/goals/${goalId}/contribute`, {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Setoran tabungan berhasil disisihkan dari rekening!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menyetor tabungan');
+		} catch (err: any) {
+			console.error('API contribute goal failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menyetor tabungan', 'error');
+			return null;
+		}
+	}
+
+	async withdrawGoal(goalId: string, payload: { account_id: string; amount: number }) {
+		try {
+			const res = await apiFetch<any>(`/goals/${goalId}/withdraw`, {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Dana tabungan berhasil ditarik ke rekening!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menarik dana tabungan');
+		} catch (err: any) {
+			console.error('API withdraw goal failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menarik tabungan', 'error');
+			return null;
+		}
+	}
+
+	async deleteGoal(id: string) {
+		try {
+			await apiFetch(`/goals/${id}`, { method: 'DELETE' });
+			await this.loadFromDatabase();
+			notificationStore.showToast('Target tabungan berhasil dihapus', 'info');
+		} catch (err: any) {
+			console.error('API delete goal failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus target tabungan', 'error');
+		}
+	}
+
+	async addInvestment(payload: { account_id: string; name: string; symbol: string; asset_class: string; quantity: number; buy_price: number; current_price?: number; notes?: string }) {
+		try {
+			const res = await apiFetch<any>('/investments', {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Aset investasi berhasil dibeli & dicatat!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal mencatat investasi');
+		} catch (err: any) {
+			console.error('API add investment failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal mencatat investasi', 'error');
+			return null;
+		}
+	}
+
+	async deleteInvestment(id: string) {
+		try {
+			await apiFetch(`/investments/${id}`, { method: 'DELETE' });
+			await this.loadFromDatabase();
+			notificationStore.showToast('Aset investasi berhasil dihapus', 'info');
+		} catch (err: any) {
+			console.error('API delete investment failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus aset investasi', 'error');
+		}
+	}
+
+	async addCategory(payload: { name: string; type?: string; icon?: string; color?: string }) {
+		try {
+			const res = await apiFetch<Category>('/categories', {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Kategori baru berhasil ditambahkan', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menambahkan kategori');
+		} catch (err: any) {
+			console.error('API add category failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menambahkan kategori', 'error');
+			return null;
+		}
+	}
+
+	async updateCategory(id: string, payload: { name?: string; type?: string; icon?: string; color?: string }) {
+		try {
+			const res = await apiFetch<Category>(`/categories/${id}`, {
+				method: 'PUT',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Kategori berhasil disesuaikan', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal memperbarui kategori');
+		} catch (err: any) {
+			console.error('API update category failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal memperbarui kategori', 'error');
+			return null;
+		}
+	}
+
+	async deleteCategory(id: string) {
+		try {
+			const res = await apiFetch<any>(`/categories/${id}`, {
+				method: 'DELETE'
+			});
+			if (res.error) {
+				throw new Error(res.error);
+			}
+			await this.loadFromDatabase();
+			notificationStore.showToast('Kategori berhasil dihapus', 'info');
+			return true;
+		} catch (err: any) {
+			console.error('API delete category failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus kategori', 'error');
+			return false;
 		}
 	}
 }

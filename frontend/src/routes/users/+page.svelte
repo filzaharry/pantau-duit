@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { apiFetch } from '$lib/services/api';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -11,283 +13,234 @@
 		Filter,
 		RotateCcw,
 		Shield,
-		ShieldCheck,
-		Bot,
-		Mail,
 		CheckCircle2,
 		AlertCircle,
+		Building2,
+		User as UserIcon,
+		Building,
 		Lock,
-		Edit3,
-		KeyRound,
-		UserX,
-		UserCheck,
-		Crown,
-		Receipt
+		Pencil,
+		Trash2
 	} from 'lucide-svelte';
 
 	// Filters
 	let searchQuery = $state('');
-	let selectedPlan = $state<string>('ALL');
+	let selectedRoleType = $state<string>('ALL');
 	let selectedStatus = $state<string>('ALL');
+	let isFilterOpen = $state(false);
+	let isLoading = $state(true);
+
+	const isFilterActive = $derived(selectedRoleType !== 'ALL' || selectedStatus !== 'ALL');
 
 	// Modals
 	let isAddUserModalOpen = $state(false);
-	let isEditRoleModalOpen = $state(false);
-	let selectedUserForEdit = $state<any | null>(null);
+	let isEditModalOpen = $state(false);
+	let isDeleteModalOpen = $state(false);
+	let selectedUserForAction = $state<any | null>(null);
 
 	// Form State for Add User
 	let newUserName = $state('');
 	let newUserEmail = $state('');
-	let newUserPlan = $state('free');
-	let newUserTelegram = $state('');
+	let newUserPassword = $state('');
+	let newUserRoleType = $state<'PERSONAL' | 'COMPANY'>('PERSONAL');
+	let newWorkspaceName = $state('');
 	let formError = $state('');
+	let isSubmitting = $state(false);
 
-	// Mock User Data (All Personal Finance Individuals)
-	const users = $state([
-		{
-			id: 'usr-001',
-			name: 'Alex Chandra',
-			email: 'alex@pantauduit.id',
-			avatarBg: 'from-purple-600 to-indigo-600',
-			role: 'superadmin',
-			roleLabel: 'Superadmin',
-			plan: 'PRO',
-			telegramUsername: '@alex_pd',
-			isTelegramLinked: true,
-			txCount: 320,
-			status: 'ACTIVE',
-			createdAt: '15 Jan 2026',
-			lastActive: '2 mnt yang lalu'
-		},
-		{
-			id: 'usr-002',
-			name: 'Budi Pratama',
-			email: 'budi.pratama@gmail.com',
-			avatarBg: 'from-blue-600 to-cyan-600',
-			role: 'subscriber',
-			roleLabel: 'Pro Subscriber',
-			plan: 'PRO',
-			telegramUsername: '@budipratama',
-			isTelegramLinked: true,
-			txCount: 148,
-			status: 'ACTIVE',
-			createdAt: '12 Sep 2026',
-			lastActive: '15 mnt yang lalu'
-		},
-		{
-			id: 'usr-003',
-			name: 'Siti Rahmawati',
-			email: 'siti.rahma@yahoo.com',
-			avatarBg: 'from-amber-600 to-orange-600',
-			role: 'user',
-			roleLabel: 'Free User',
-			plan: 'FREE',
-			telegramUsername: '@siti_rahma',
-			isTelegramLinked: true,
-			txCount: 84,
-			status: 'ACTIVE',
-			createdAt: '12 Sep 2026',
-			lastActive: '1 jam yang lalu'
-		},
-		{
-			id: 'usr-004',
-			name: 'Dimas Nugroho',
-			email: 'dimas.nugroho@gmail.com',
-			avatarBg: 'from-emerald-600 to-teal-600',
-			role: 'user',
-			roleLabel: 'Free User',
-			plan: 'FREE',
-			telegramUsername: '-',
-			isTelegramLinked: false,
-			txCount: 19,
-			status: 'ACTIVE',
-			createdAt: '12 Sep 2026',
-			lastActive: '3 jam yang lalu'
-		},
-		{
-			id: 'usr-005',
-			name: 'Anisa Maharani',
-			email: 'anisa.mhrn@outlook.com',
-			avatarBg: 'from-rose-600 to-pink-600',
-			role: 'subscriber',
-			roleLabel: 'Pro Subscriber',
-			plan: 'PRO',
-			telegramUsername: '@anisa_m',
-			isTelegramLinked: true,
-			txCount: 215,
-			status: 'ACTIVE',
-			createdAt: '11 Sep 2026',
-			lastActive: '5 jam yang lalu'
-		},
-		{
-			id: 'usr-006',
-			name: 'Reza Fahrezi',
-			email: 'reza.fahrezi@gmail.com',
-			avatarBg: 'from-indigo-600 to-purple-600',
-			role: 'user',
-			roleLabel: 'Free User',
-			plan: 'FREE',
-			telegramUsername: '@reza_f',
-			isTelegramLinked: true,
-			txCount: 62,
-			status: 'ACTIVE',
-			createdAt: '11 Sep 2026',
-			lastActive: '1 hari yang lalu'
-		},
-		{
-			id: 'usr-007',
-			name: 'Dewi Lestari',
-			email: 'dewi.lestari@gmail.com',
-			avatarBg: 'from-teal-600 to-cyan-600',
-			role: 'subscriber',
-			roleLabel: 'Pro Subscriber',
-			plan: 'PRO',
-			telegramUsername: '@dewilestari',
-			isTelegramLinked: true,
-			txCount: 190,
-			status: 'ACTIVE',
-			createdAt: '08 Sep 2026',
-			lastActive: '2 hari yang lalu'
-		},
-		{
-			id: 'usr-008',
-			name: 'Kevin Pratama',
-			email: 'kevin.spam@trashmail.com',
-			avatarBg: 'from-slate-700 to-slate-800',
-			role: 'user',
-			roleLabel: 'Free User',
-			plan: 'FREE',
-			telegramUsername: '@kevin_fake',
-			isTelegramLinked: false,
-			txCount: 0,
-			status: 'SUSPENDED',
-			createdAt: '01 Agu 2026',
-			lastActive: '12 hari yang lalu'
+	// Form State for Edit User
+	let editUserName = $state('');
+	let editUserEmail = $state('');
+	let editUserPassword = $state('');
+	let editUserRoleType = $state<'PERSONAL' | 'COMPANY'>('PERSONAL');
+	let editWorkspaceName = $state('');
+	let editUserStatus = $state<'ACTIVE' | 'SUSPENDED'>('ACTIVE');
+
+	// Database Users State
+	let users = $state<any[]>([]);
+
+	onMount(() => {
+		loadUsers();
+	});
+
+	async function loadUsers() {
+		isLoading = true;
+		try {
+			const res = await apiFetch<any[]>('/users');
+			if (res.data) {
+				users = res.data;
+			} else {
+				console.warn('Gagal memuat pengguna dari backend:', res.error);
+			}
+		} catch (err) {
+			console.error('Error saat memuat pengguna:', err);
+		} finally {
+			isLoading = false;
 		}
-	]);
+	}
 
 	// Filtered users list
 	const filteredUsers = $derived(
 		users.filter((u) => {
-			if (selectedPlan !== 'ALL' && u.plan !== selectedPlan) return false;
+			if (selectedRoleType !== 'ALL' && u.role_type !== selectedRoleType) return false;
 			if (selectedStatus !== 'ALL' && u.status !== selectedStatus) return false;
 
 			if (searchQuery.trim()) {
 				const q = searchQuery.toLowerCase();
 				const matchName = u.name.toLowerCase().includes(q);
 				const matchEmail = u.email.toLowerCase().includes(q);
-				const matchTg = u.telegramUsername.toLowerCase().includes(q);
-				if (!matchName && !matchEmail && !matchTg) return false;
+				const matchWs = (u.workspace_name || '').toLowerCase().includes(q);
+				if (!matchName && !matchEmail && !matchWs) return false;
 			}
 
 			return true;
 		})
 	);
 
+	// Clean single-value columns
 	const columns: TableColumn[] = [
-		{ header: 'Pengguna', key: 'name', width: '240px' },
-		{ header: 'Paket Akun', key: 'plan', width: '140px' },
-		{ header: 'Bot Telegram', key: 'telegramUsername', width: '160px' },
-		{ header: 'Catatan Dibuat', key: 'createdAt', width: '130px' },
-		{ header: 'Terakhir Aktif', key: 'lastActive', width: '150px' },
-		{ header: 'Status', key: 'status', width: '120px' },
-		{ header: 'Aksi', align: 'right', width: '90px', sortable: false }
+		{ header: 'Nama', key: 'name', width: '180px' },
+		{ header: 'Email', key: 'email', width: '220px' },
+		{ header: 'Role', key: 'role_type', width: '140px' },
+		{ header: 'Workspace', key: 'workspace_name', width: '200px' },
+		{ header: 'Terdaftar', key: 'created_at', width: '120px' },
+		{ header: 'Terakhir Masuk', key: 'last_active', width: '150px' },
+		{ header: 'Status', key: 'status', width: '110px' },
+		{ header: 'Aksi', align: 'right', width: '100px', sortable: false }
 	];
 
 	function resetFilters() {
-		searchQuery = '';
-		selectedPlan = 'ALL';
+		selectedRoleType = 'ALL';
 		selectedStatus = 'ALL';
+		isFilterOpen = false;
 	}
 
-	function handleAddUser() {
+	async function handleAddUser() {
 		formError = '';
 		if (!newUserName.trim() || !newUserEmail.trim()) {
+			formError = 'Nama lengkap dan alamat email wajib diisi.';
+			return;
+		}
+
+		isSubmitting = true;
+		try {
+			const res = await apiFetch<any>('/users', {
+				method: 'POST',
+				body: JSON.stringify({
+					name: newUserName.trim(),
+					email: newUserEmail.trim(),
+					password: newUserPassword.trim() || 'password123',
+					role_type: newUserRoleType,
+					workspace_name: newWorkspaceName.trim() || undefined
+				})
+			});
+
+			if (res.data) {
+				notificationStore.toast(`Pengguna ${newUserName} berhasil dibuat (${newUserRoleType})!`, 'success');
+				isAddUserModalOpen = false;
+				newUserName = '';
+				newUserEmail = '';
+				newUserPassword = '';
+				newWorkspaceName = '';
+				newUserRoleType = 'PERSONAL';
+				await loadUsers();
+			} else {
+				formError = res.error || 'Gagal mendaftarkan pengguna di database.';
+			}
+		} catch (err: any) {
+			formError = err.message || 'Terjadi kesalahan sistem.';
+		} finally {
+			isSubmitting = false;
+		}
+	}
+
+	function openEditModal(user: any) {
+		selectedUserForAction = user;
+		editUserName = user.name;
+		editUserEmail = user.email;
+		editUserPassword = '';
+		editUserRoleType = user.role_type || 'PERSONAL';
+		editWorkspaceName = user.workspace_name || '';
+		editUserStatus = user.status || 'ACTIVE';
+		formError = '';
+		isEditModalOpen = true;
+	}
+
+	async function handleUpdateUser() {
+		if (!selectedUserForAction) return;
+		formError = '';
+		if (!editUserName.trim() || !editUserEmail.trim()) {
 			formError = 'Nama dan email wajib diisi.';
 			return;
 		}
 
-		const isPro = newUserPlan === 'pro';
-		users.unshift({
-			id: `usr-${Date.now()}`,
-			name: newUserName.trim(),
-			email: newUserEmail.trim(),
-			avatarBg: 'from-blue-600 to-indigo-600',
-			role: isPro ? 'subscriber' : 'user',
-			roleLabel: isPro ? 'Pro Subscriber' : 'Free User',
-			plan: isPro ? 'PRO' : 'FREE',
-			telegramUsername: newUserTelegram.trim() ? (newUserTelegram.startsWith('@') ? newUserTelegram.trim() : `@${newUserTelegram.trim()}`) : '-',
-			isTelegramLinked: Boolean(newUserTelegram.trim()),
-			txCount: 0,
-			status: 'ACTIVE',
-			createdAt: 'Baru saja',
-			lastActive: 'Baru saja'
-		});
+		isSubmitting = true;
+		try {
+			const res = await apiFetch<any>(`/users/${selectedUserForAction.id}`, {
+				method: 'PUT',
+				body: JSON.stringify({
+					name: editUserName.trim(),
+					email: editUserEmail.trim(),
+					password: editUserPassword.trim() || undefined,
+					role_type: editUserRoleType,
+					workspace_name: editWorkspaceName.trim() || undefined,
+					status: editUserStatus
+				})
+			});
 
-		notificationStore.toast(`Pengguna ${newUserName} berhasil didaftarkan!`, 'success');
-		isAddUserModalOpen = false;
-		newUserName = '';
-		newUserEmail = '';
-		newUserTelegram = '';
-		newUserPlan = 'free';
-	}
-
-	function toggleSuspendUser(user: any) {
-		if (user.role === 'superadmin') {
-			notificationStore.toast('Akun Superadmin utama tidak dapat disuspend!', 'warning');
-			return;
+			if (res.data) {
+				notificationStore.toast(`Data pengguna ${editUserName} berhasil diperbarui!`, 'success');
+				isEditModalOpen = false;
+				selectedUserForAction = null;
+				await loadUsers();
+			} else {
+				formError = res.error || 'Gagal memperbarui pengguna.';
+			}
+		} catch (err: any) {
+			formError = err.message || 'Terjadi kesalahan sistem.';
+		} finally {
+			isSubmitting = false;
 		}
-
-		user.status = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-		notificationStore.toast(
-			user.status === 'ACTIVE'
-				? `Akun ${user.name} berhasil diaktifkan kembali.`
-				: `Akun ${user.name} telah ditangguhkan.`,
-			user.status === 'ACTIVE' ? 'success' : 'info'
-		);
 	}
 
-	function openEditRole(user: any) {
-		selectedUserForEdit = { ...user };
-		isEditRoleModalOpen = true;
+	function openDeleteModal(user: any) {
+		selectedUserForAction = user;
+		isDeleteModalOpen = true;
 	}
 
-	function handleSaveUserRole() {
-		if (!selectedUserForEdit) return;
+	async function handleDeleteUser() {
+		if (!selectedUserForAction) return;
+		isSubmitting = true;
+		try {
+			const res = await apiFetch<any>(`/users/${selectedUserForAction.id}`, {
+				method: 'DELETE'
+			});
 
-		const target = users.find((u) => u.id === selectedUserForEdit.id);
-		if (target) {
-			target.role = selectedUserForEdit.role;
-			target.plan = selectedUserForEdit.plan;
-			target.roleLabel = selectedUserForEdit.plan === 'PRO' ? 'Pro Subscriber' : selectedUserForEdit.role === 'superadmin' ? 'Superadmin' : 'Free User';
-			target.status = selectedUserForEdit.status;
+			if (res.data) {
+				notificationStore.toast(`Pengguna ${selectedUserForAction.name} berhasil dihapus permanen!`, 'success');
+				isDeleteModalOpen = false;
+				selectedUserForAction = null;
+				await loadUsers();
+			} else {
+				notificationStore.toast(res.error || 'Gagal menghapus pengguna.', 'error');
+			}
+		} catch (err: any) {
+			notificationStore.toast(err.message || 'Terjadi kesalahan sistem.', 'error');
+		} finally {
+			isSubmitting = false;
 		}
-
-		notificationStore.toast(`Pengaturan akun ${selectedUserForEdit.name} berhasil diperbarui!`, 'success');
-		isEditRoleModalOpen = false;
-		selectedUserForEdit = null;
 	}
 </script>
 
 <div class="space-y-6 max-w-7xl mx-auto w-full pb-24 lg:pb-10">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80 dark:border-white/10">
-		<div>
-			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-				<Users class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
-				<span>Manajemen Pengguna (User Management)</span>
-			</h1>
-			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-				Kelola daftar pengguna aplikasi PantauDuit, paket langganan personal, dan status akses akun
-			</p>
-		</div>
-
-		<div class="flex items-center gap-2 self-start sm:self-auto">
-			<Button variant="primary" onclick={() => (isAddUserModalOpen = true)} class="h-9 px-3.5 text-xs">
-				<UserPlus class="w-4 h-4" />
-				<span>Tambah Pengguna</span>
-			</Button>
-		</div>
+	<div class="pb-2 border-b border-slate-200/80 dark:border-white/10">
+		<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+			<Users class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
+			<span>Manajemen Pengguna (User Management)</span>
+		</h1>
+		<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+			Kelola daftar pengguna terdaftar di database, buat user baru di Role Personal maupun Role Company
+		</p>
 	</div>
 
 	<!-- 4-Column Metric Ribbon -->
@@ -301,158 +254,197 @@
 				<div class="min-w-0 flex-1">
 					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Total Pengguna</span>
 					<span class="text-xs sm:text-base font-semibold text-slate-900 dark:text-white truncate block">{users.length} Akun</span>
-					<span class="text-[10px] sm:text-[11px] text-emerald-500 font-medium truncate block">Personal Budgeting</span>
+					<span class="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate block">Database PostgreSQL</span>
 				</div>
 			</div>
 
-			<!-- Col 2: Active Users -->
+			<!-- Col 2: Role Personal -->
 			<div class="lg:pl-5 flex items-center gap-2.5 sm:gap-3 min-w-0">
-				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-					<CheckCircle2 class="w-4 h-4 sm:w-5 sm:h-5" />
+				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-500/10 text-[#007AFF] flex items-center justify-center shrink-0">
+					<UserIcon class="w-4 h-4 sm:w-5 sm:h-5" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Pengguna Aktif</span>
+					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Role Personal</span>
 					<span class="text-xs sm:text-base font-semibold text-slate-900 dark:text-white truncate block">
-						{users.filter((u) => u.status === 'ACTIVE').length} Akun
+						{users.filter((u) => u.role_type === 'PERSONAL').length} Akun
 					</span>
-					<span class="text-[10px] sm:text-[11px] text-slate-400 truncate block">Status Terverifikasi</span>
+					<span class="text-[10px] sm:text-[11px] text-blue-500 font-medium truncate block">Keuangan Mandiri</span>
 				</div>
 			</div>
 
-			<!-- Col 3: Telegram Linked -->
+			<!-- Col 3: Role Company -->
 			<div class="lg:pl-5 flex items-center gap-2.5 sm:gap-3 min-w-0">
-				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-500/10 text-[#0088cc] flex items-center justify-center shrink-0">
-					<Bot class="w-4 h-4 sm:w-5 sm:h-5" />
+				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+					<Building2 class="w-4 h-4 sm:w-5 sm:h-5" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Terhubung Telegram</span>
+					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Role Company</span>
 					<span class="text-xs sm:text-base font-semibold text-slate-900 dark:text-white truncate block">
-						{users.filter((u) => u.isTelegramLinked).length} Pengguna
+						{users.filter((u) => u.role_type === 'COMPANY').length} Akun
 					</span>
-					<span class="text-[10px] sm:text-[11px] text-blue-500 font-medium truncate block">Chatbot Aktif</span>
+					<span class="text-[10px] sm:text-[11px] text-purple-500 font-medium truncate block">Bisnis & HR Payroll</span>
 				</div>
 			</div>
 
-			<!-- Col 4: Pro Plan Users -->
+			<!-- Col 4: Superadmin -->
 			<div class="lg:pl-5 flex items-center gap-2.5 sm:gap-3 min-w-0">
 				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-					<Crown class="w-4 h-4 sm:w-5 sm:h-5" />
+					<Shield class="w-4 h-4 sm:w-5 sm:h-5" />
 				</div>
 				<div class="min-w-0 flex-1">
-					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Pelanggan Pro</span>
+					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Administrator</span>
 					<span class="text-xs sm:text-base font-semibold text-slate-900 dark:text-white truncate block">
-						{users.filter((u) => u.plan === 'PRO').length} Pengguna
+						{users.filter((u) => u.is_superadmin).length} Akun
 					</span>
-					<span class="text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium truncate block">Fitur Penuh</span>
+					<span class="text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-medium truncate block">Full Governance</span>
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Search & Filters Toolbar -->
-	<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-		<div class="relative flex-1">
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button (with Popover), & Create Button -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
 			<Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
 			<input
 				type="text"
 				bind:value={searchQuery}
-				placeholder="Cari pengguna berdasarkan nama, email, atau @telegram..."
+				placeholder="Cari nama, email, atau workspace..."
 				class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF] transition-colors"
 			/>
 		</div>
 
+		<!-- Action Buttons: Filter & Tambah Pengguna (Aligned inline) -->
 		<div class="flex items-center gap-2">
-			<select
-				bind:value={selectedPlan}
-				class="h-9 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
-			>
-				<option value="ALL">Semua Paket Akun</option>
-				<option value="PRO">Pro Subscriber</option>
-				<option value="FREE">Free User</option>
-			</select>
-
-			<select
-				bind:value={selectedStatus}
-				class="h-9 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
-			>
-				<option value="ALL">Semua Status</option>
-				<option value="ACTIVE">Aktif (Active)</option>
-				<option value="SUSPENDED">Ditangguhkan</option>
-			</select>
-
-			{#if searchQuery || selectedPlan !== 'ALL' || selectedStatus !== 'ALL'}
-				<Button variant="ghost" onclick={resetFilters} class="h-9 px-3 text-xs text-slate-500">
-					<RotateCcw class="w-3.5 h-3.5 mr-1" />
-					<span>Reset</span>
+			<!-- Filter Button with Popover -->
+			<div class="relative">
+				<Button
+					variant="ghost"
+					onclick={() => (isFilterOpen = !isFilterOpen)}
+					class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {isFilterActive ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+				>
+					<Filter class="w-3.5 h-3.5 mr-1.5" />
+					<span>Filter</span>
+					{#if isFilterActive}
+						<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
+					{/if}
 				</Button>
-			{/if}
+
+				{#if isFilterOpen}
+					<!-- Backdrop -->
+					<button
+						type="button"
+						aria-label="Tutup menu filter"
+						class="fixed inset-0 z-30 cursor-default bg-transparent"
+						onclick={() => (isFilterOpen = false)}
+					></button>
+
+					<!-- Filter Dropdown Popover -->
+					<div class="absolute right-0 top-full mt-2 w-64 p-3.5 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 shadow-2xl z-40 space-y-3">
+						<div>
+							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Role</span>
+							<select
+								bind:value={selectedRoleType}
+								class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+							>
+								<option value="ALL">Semua Tipe Role</option>
+								<option value="PERSONAL">Role Personal</option>
+								<option value="COMPANY">Role Company</option>
+							</select>
+						</div>
+
+						<div>
+							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Status Akun</span>
+							<select
+								bind:value={selectedStatus}
+								class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+							>
+								<option value="ALL">Semua Status</option>
+								<option value="ACTIVE">Aktif (Active)</option>
+								<option value="SUSPENDED">Ditangguhkan</option>
+							</select>
+						</div>
+
+						{#if isFilterActive}
+							<div class="pt-1 border-t border-slate-100 dark:border-white/5 flex justify-end">
+								<button
+									type="button"
+									onclick={resetFilters}
+									class="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+								>
+									Reset Filter
+								</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Button Tambah Pengguna (Create) -->
+			<Button variant="primary" onclick={() => (isAddUserModalOpen = true)} class="h-9 px-3.5 text-xs">
+				<UserPlus class="w-4 h-4 mr-1.5" />
+				<span>Tambah Pengguna</span>
+			</Button>
 		</div>
 	</div>
 
-	<!-- Users Data Table using global reusable Table component -->
+	<!-- Users Data Table: 1 Value Per Column & Action Buttons on Every Row -->
 	<Table
-		title="Daftar Pengguna Platform"
-		subtitle="Direktori seluruh akun personal finance individu yang terdaftar di PantauDuit"
+		title="Daftar Pengguna Database"
+		subtitle="Data pengguna PostgreSQL yang dikelola langsung oleh Administrator"
 		icon={Users}
 		badge="{filteredUsers.length} Pengguna"
 		{columns}
 		items={filteredUsers}
 		emptyMessage="Tidak ada pengguna yang cocok"
-		emptyDescription="Coba ubah kata kunci pencarian atau filter status dan paket di atas."
+		emptyDescription="Coba ubah kata kunci pencarian atau filter tipe role di atas."
 	>
 		{#snippet row(user, index)}
 			<tr class="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
-				<!-- User Avatar & Email -->
-				<td class="p-3.5 whitespace-nowrap">
-					<div class="flex items-center gap-3">
-						<div class="w-8 h-8 rounded-full bg-gradient-to-br {user.avatarBg} text-white flex items-center justify-center font-semibold text-xs shrink-0">
-							{user.name.slice(0, 2).toUpperCase()}
-						</div>
-						<div>
-							<p class="font-semibold text-slate-900 dark:text-white">{user.name}</p>
-							<span class="text-[11px] text-slate-400 font-mono">{user.email}</span>
-						</div>
-					</div>
+				<!-- Kolom 1: Nama (1 Nilai) -->
+				<td class="p-3.5 whitespace-nowrap font-semibold text-slate-900 dark:text-white">
+					{user.name}
 				</td>
 
-				<!-- Plan Badge -->
-				<td class="p-3.5 whitespace-nowrap">
-					<span class="px-2 py-0.5 rounded-lg text-[10px] font-semibold {user.plan === 'PRO'
-						? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-						: user.role === 'superadmin'
-							? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
-							: 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300'}">
-						{user.roleLabel}
-					</span>
+				<!-- Kolom 2: Email (1 Nilai) -->
+				<td class="p-3.5 whitespace-nowrap font-mono text-slate-600 dark:text-slate-400 text-xs">
+					{user.email}
 				</td>
 
-				<!-- Telegram -->
+				<!-- Kolom 3: Role (1 Nilai Badge) -->
 				<td class="p-3.5 whitespace-nowrap">
-					{#if user.isTelegramLinked}
-						<span class="inline-flex items-center gap-1 text-[11px] font-mono text-[#0088cc]">
-							<Bot class="w-3.5 h-3.5" />
-							<span>{user.telegramUsername}</span>
+					{#if user.is_superadmin}
+						<span class="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 inline-block">
+							SUPERADMIN
+						</span>
+					{:else if user.role_type === 'COMPANY'}
+						<span class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 inline-block">
+							ROLE COMPANY
 						</span>
 					{:else}
-						<span class="text-[10px] text-slate-400 italic">Belum terhubung</span>
+						<span class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold bg-[#007AFF]/10 text-[#007AFF] dark:text-[#0A84FF] border border-[#007AFF]/20 inline-block">
+							ROLE PERSONAL
+						</span>
 					{/if}
 				</td>
 
-				<!-- Tx Count -->
-				<td class="p-3.5 whitespace-nowrap">
-					<span class="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium">
-						<Receipt class="w-3.5 h-3.5 text-slate-400" />
-						<span>{user.txCount} entri</span>
-					</span>
+				<!-- Kolom 4: Workspace (1 Nilai) -->
+				<td class="p-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
+					{user.workspace_name}
 				</td>
 
-				<!-- Last Active -->
-				<td class="p-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-					<div>{user.lastActive}</div>
-					<div class="text-[10px] text-slate-400">Gabung: {user.createdAt}</div>
+				<!-- Kolom 5: Terdaftar (1 Nilai) -->
+				<td class="p-3.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
+					{user.created_at}
 				</td>
 
-				<!-- Status -->
+				<!-- Kolom 6: Terakhir Masuk (1 Nilai) -->
+				<td class="p-3.5 whitespace-nowrap text-slate-500 dark:text-slate-400">
+					{user.last_active}
+				</td>
+
+				<!-- Kolom 7: Status (1 Nilai Badge) -->
 				<td class="p-3.5 whitespace-nowrap">
 					<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 w-fit {user.status === 'ACTIVE'
 						? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
@@ -466,30 +458,28 @@
 					</span>
 				</td>
 
-				<!-- Actions -->
+				<!-- Kolom 8: Aksi (Button Update & Delete pada masing-masing row) -->
 				<td class="p-3.5 text-right whitespace-nowrap">
-					<div class="flex items-center justify-end gap-1">
+					<div class="flex items-center justify-end gap-1.5">
+						<!-- Button Update / Edit -->
 						<button
 							type="button"
-							onclick={() => openEditRole(user)}
-							title="Ubah Paket / Role"
+							onclick={() => openEditModal(user)}
+							title="Ubah Data Pengguna"
 							class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-500 hover:text-[#007AFF] transition-colors cursor-pointer"
 						>
-							<Edit3 class="w-3.5 h-3.5" />
+							<Pencil class="w-3.5 h-3.5" />
 						</button>
 
-						{#if user.role !== 'superadmin'}
+						<!-- Button Delete -->
+						{#if !user.is_superadmin}
 							<button
 								type="button"
-								onclick={() => toggleSuspendUser(user)}
-								title={user.status === 'ACTIVE' ? 'Tangguhkan Akun' : 'Aktifkan Akun'}
-								class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-500 hover:text-rose-500 transition-colors cursor-pointer"
+								onclick={() => openDeleteModal(user)}
+								title="Hapus Pengguna"
+								class="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
 							>
-								{#if user.status === 'ACTIVE'}
-									<UserX class="w-3.5 h-3.5" />
-								{:else}
-									<UserCheck class="w-3.5 h-3.5 text-emerald-500" />
-								{/if}
+								<Trash2 class="w-3.5 h-3.5" />
 							</button>
 						{/if}
 					</div>
@@ -498,42 +488,173 @@
 		{/snippet}
 	</Table>
 
-	<!-- Modal Tambah Pengguna Baru -->
+	<!-- Modal Tambah Pengguna Baru (Role Personal & Role Company) -->
 	<Modal
 		bind:open={isAddUserModalOpen}
-		title="Daftarkan Pengguna Baru"
-		description="Tambahkan pengguna baru ke platform PantauDuit"
+		title="Tambah Pengguna Baru"
+		description="Daftarkan pengguna baru langsung ke database dengan Role Personal atau Role Company"
 	>
-		<div class="space-y-3.5 text-xs">
+		<div class="space-y-4 text-xs">
 			<Input
 				bind:value={newUserName}
 				label="Nama Lengkap Pengguna"
-				placeholder="Contoh: Budi Santoso"
+				placeholder="Contoh: Rudi Hermawan"
+				required
 			/>
 
 			<Input
 				bind:value={newUserEmail}
 				type="email"
-				label="Alamat Email Pengguna"
-				placeholder="Contoh: budi@gmail.com"
+				label="Alamat Email"
+				placeholder="Contoh: rudi@example.com"
+				required
 			/>
 
 			<Input
-				bind:value={newUserTelegram}
-				label="Username Telegram (Opsional)"
-				placeholder="Contoh: @budi_pd"
+				bind:value={newUserPassword}
+				type="password"
+				label="Kata Sandi Awal"
+				placeholder="Minimal 6 karakter (Default: password123)"
 			/>
 
 			<div>
 				<span class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-					Paket Langganan
+					Pilih Role & Tipe Workspace
+				</span>
+				<div class="grid grid-cols-2 gap-2.5">
+					<button
+						type="button"
+						onclick={() => (newUserRoleType = 'PERSONAL')}
+						class="p-3 rounded-xl border text-left flex flex-col gap-1 transition-all {newUserRoleType === 'PERSONAL'
+							? 'border-[#007AFF] bg-[#007AFF]/5 text-[#007AFF] ring-1 ring-[#007AFF]'
+							: 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'}"
+					>
+						<div class="flex items-center gap-1.5 font-bold text-xs">
+							<UserIcon class="w-3.5 h-3.5" />
+							<span>Role Personal</span>
+						</div>
+						<p class="text-[10px] text-slate-500 dark:text-slate-400">
+							Workspace personal untuk pengelolaan keuangan pribadi & budgeting.
+						</p>
+					</button>
+
+					<button
+						type="button"
+						onclick={() => (newUserRoleType = 'COMPANY')}
+						class="p-3 rounded-xl border text-left flex flex-col gap-1 transition-all {newUserRoleType === 'COMPANY'
+							? 'border-indigo-600 bg-indigo-500/5 text-indigo-600 ring-1 ring-indigo-600'
+							: 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'}"
+					>
+						<div class="flex items-center gap-1.5 font-bold text-xs">
+							<Building2 class="w-3.5 h-3.5" />
+							<span>Role Company</span>
+						</div>
+						<p class="text-[10px] text-slate-500 dark:text-slate-400">
+							Workspace perusahaan untuk operasional, HR, payroll, & absensi.
+						</p>
+					</button>
+				</div>
+			</div>
+
+			<Input
+				bind:value={newWorkspaceName}
+				label="Nama Workspace (Opsional)"
+				placeholder={newUserRoleType === 'COMPANY' ? 'Contoh: PT Sinar Makmur Sejahtera' : 'Contoh: Workspace Pribadi Rudi'}
+			/>
+
+			{#if formError}
+				<p class="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200">
+					{formError}
+				</p>
+			{/if}
+		</div>
+
+		{#snippet footer()}
+			<div class="flex items-center justify-end gap-2">
+				<Button variant="ghost" onclick={() => (isAddUserModalOpen = false)} disabled={isSubmitting}>
+					Batal
+				</Button>
+				<Button variant="primary" onclick={handleAddUser} disabled={isSubmitting}>
+					<span>{isSubmitting ? 'Menyimpan...' : 'Simpan Pengguna'}</span>
+				</Button>
+			</div>
+		{/snippet}
+	</Modal>
+
+	<!-- Modal Ubah Data Pengguna (Update) -->
+	<Modal
+		bind:open={isEditModalOpen}
+		title="Ubah Data Pengguna"
+		description="Perbarui informasi profil, role, atau workspace pengguna di database"
+	>
+		<div class="space-y-4 text-xs">
+			<Input
+				bind:value={editUserName}
+				label="Nama Lengkap Pengguna"
+				placeholder="Nama lengkap"
+				required
+			/>
+
+			<Input
+				bind:value={editUserEmail}
+				type="email"
+				label="Alamat Email"
+				placeholder="nama@email.com"
+				required
+			/>
+
+			<Input
+				bind:value={editUserPassword}
+				type="password"
+				label="Kata Sandi Baru (Opsional)"
+				placeholder="Kosongkan jika tidak ingin mengubah kata sandi"
+			/>
+
+			<div>
+				<span class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
+					Tipe Role & Workspace
+				</span>
+				<div class="grid grid-cols-2 gap-2.5">
+					<button
+						type="button"
+						onclick={() => (editUserRoleType = 'PERSONAL')}
+						class="p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all {editUserRoleType === 'PERSONAL'
+							? 'border-[#007AFF] bg-[#007AFF]/5 text-[#007AFF] font-bold ring-1 ring-[#007AFF]'
+							: 'border-slate-200 dark:border-white/10'}"
+					>
+						<UserIcon class="w-3.5 h-3.5" />
+						<span>Role Personal</span>
+					</button>
+
+					<button
+						type="button"
+						onclick={() => (editUserRoleType = 'COMPANY')}
+						class="p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all {editUserRoleType === 'COMPANY'
+							? 'border-indigo-600 bg-indigo-500/5 text-indigo-600 font-bold ring-1 ring-indigo-600'
+							: 'border-slate-200 dark:border-white/10'}"
+					>
+						<Building2 class="w-3.5 h-3.5" />
+						<span>Role Company</span>
+					</button>
+				</div>
+			</div>
+
+			<Input
+				bind:value={editWorkspaceName}
+				label="Nama Workspace"
+				placeholder="Nama workspace"
+			/>
+
+			<div>
+				<span class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
+					Status Akun
 				</span>
 				<select
-					bind:value={newUserPlan}
+					bind:value={editUserStatus}
 					class="w-full h-9 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
 				>
-					<option value="free">Free Tier (Gratis - Standar)</option>
-					<option value="pro">Pro Tier (Langganan Berbayar)</option>
+					<option value="ACTIVE">Aktif (Dapat masuk ke sistem)</option>
+					<option value="SUSPENDED">Ditangguhkan (Akses login diblokir)</option>
 				</select>
 			</div>
 
@@ -545,67 +666,39 @@
 		</div>
 
 		{#snippet footer()}
-			<Button variant="ghost" onclick={() => (isAddUserModalOpen = false)}>Batal</Button>
-			<Button variant="primary" onclick={handleAddUser}>Daftarkan Pengguna</Button>
+			<div class="flex items-center justify-end gap-2">
+				<Button variant="ghost" onclick={() => (isEditModalOpen = false)} disabled={isSubmitting}>
+					Batal
+				</Button>
+				<Button variant="primary" onclick={handleUpdateUser} disabled={isSubmitting}>
+					<span>{isSubmitting ? 'Memperbarui...' : 'Simpan Perubahan'}</span>
+				</Button>
+			</div>
 		{/snippet}
 	</Modal>
 
-	<!-- Modal Ubah Paket & Status Pengguna -->
-	{#if selectedUserForEdit}
-		<Modal
-			open={isEditRoleModalOpen}
-			title="Ubah Paket & Status Pengguna"
-			description="Atur paket layanan dan izin akses untuk {selectedUserForEdit.name}"
-			onclose={() => {
-				isEditRoleModalOpen = false;
-				selectedUserForEdit = null;
-			}}
-		>
-			<div class="space-y-4 text-xs">
-				<div class="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/10 space-y-1">
-					<p class="font-semibold text-slate-900 dark:text-white">{selectedUserForEdit.name}</p>
-					<p class="text-slate-400 font-mono text-[11px]">{selectedUserForEdit.email}</p>
-				</div>
-
-				<div>
-					<span class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-						Paket Layanan
-					</span>
-					<select
-						bind:value={selectedUserForEdit.plan}
-						class="w-full h-9 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
-					>
-						<option value="FREE">Free User (Batas Standar)</option>
-						<option value="PRO">Pro Subscriber (Akses Penuh)</option>
-					</select>
-				</div>
-
-				<div>
-					<span class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-						Status Akun
-					</span>
-					<select
-						bind:value={selectedUserForEdit.status}
-						class="w-full h-9 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
-					>
-						<option value="ACTIVE">Aktif (Bisa Login & Catat)</option>
-						<option value="SUSPENDED">Ditangguhkan (Diblokir Sementara)</option>
-					</select>
-				</div>
+	<!-- Modal Konfirmasi Hapus Pengguna (Delete) -->
+	<Modal
+		bind:open={isDeleteModalOpen}
+		title="Konfirmasi Hapus Pengguna"
+		description="Apakah Anda yakin ingin menghapus akun ini secara permanen dari database?"
+	>
+		{#if selectedUserForAction}
+			<div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+				<p class="font-bold">Perhatian: Tindakan ini tidak dapat dibatalkan!</p>
+				<p>Akun <b>{selectedUserForAction.name}</b> ({selectedUserForAction.email}) dan seluruh relasi keanggotaan workspace akan dihapus permanen dari PostgreSQL.</p>
 			</div>
+		{/if}
 
-			{#snippet footer()}
-				<Button
-					variant="ghost"
-					onclick={() => {
-						isEditRoleModalOpen = false;
-						selectedUserForEdit = null;
-					}}
-				>
+		{#snippet footer()}
+			<div class="flex items-center justify-end gap-2">
+				<Button variant="ghost" onclick={() => (isDeleteModalOpen = false)} disabled={isSubmitting}>
 					Batal
 				</Button>
-				<Button variant="primary" onclick={handleSaveUserRole}>Simpan Perubahan</Button>
-			{/snippet}
-		</Modal>
-	{/if}
+				<Button variant="danger" onclick={handleDeleteUser} disabled={isSubmitting}>
+					<span>{isSubmitting ? 'Menghapus...' : 'Ya, Hapus Permanen'}</span>
+				</Button>
+			</div>
+		{/snippet}
+	</Modal>
 </div>

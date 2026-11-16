@@ -35,10 +35,14 @@
 		}
 
 		loading = true;
-		await authStore.login('alex@example.com', 'otp-verified');
-		notificationStore.toast('Otentikasi berhasil! Mengarahkan ke dasbor...', 'success');
+		const res = await authStore.login('budi@pantauduit.id', 'password123');
+		if (res.success) {
+			notificationStore.toast(`Otentikasi berhasil! Masuk sebagai ${authStore.user?.name}`, 'success');
+			goto('/dashboard', { replaceState: true });
+		} else {
+			notificationStore.toast(res.error || 'Verifikasi OTP gagal.', 'error');
+		}
 		loading = false;
-		goto('/dashboard');
 	}
 </script>
 

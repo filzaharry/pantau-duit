@@ -9,12 +9,15 @@ export interface User {
 	id: UUID;
 	email: string;
 	name: string;
+	username?: string;
 	avatar_url?: string;
 	status: UserStatus;
 	is_superadmin: boolean;
 	role: UserRole;
+	permissions?: string[];
 	email_verified_at?: string;
-	created_at: string;
+	created_at?: string;
+	last_login_at?: string;
 }
 
 export type TenantType = 'PERSONAL' | 'FAMILY' | 'BUSINESS';
@@ -91,8 +94,8 @@ export interface Category {
 }
 
 export type TransactionType = 'EXPENSE' | 'INCOME' | 'INVESTMENT' | 'TRANSFER' | 'REFUND';
-export type TransactionSource = 'TELEGRAM' | 'DASHBOARD' | 'SYSTEM' | 'API' | 'MANUAL_WEB';
-export type TransactionStatus = 'COMPLETED' | 'PENDING' | 'VOIDED' | 'DRAFT' | 'POSTED';
+export type TransactionSource = 'TELEGRAM' | 'DASHBOARD' | 'SYSTEM' | 'API';
+export type TransactionStatus = 'COMPLETED' | 'PENDING' | 'VOIDED' | 'DRAFT';
 
 export interface Transaction {
 	id: UUID;

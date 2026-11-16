@@ -19,6 +19,7 @@
 		Save,
 		RotateCcw,
 		Search,
+		Filter,
 		SlidersHorizontal,
 		Trash2,
 		Eye,
@@ -128,9 +129,21 @@
 
 	// Filter & Search
 	let searchQuery = $state('');
+	let selectedRoleType = $state<'ALL' | 'SYSTEM' | 'CUSTOM'>('ALL');
+	let isFilterOpen = $state(false);
+
+	const isFilterActive = $derived(selectedRoleType !== 'ALL');
+
+	function resetFilters() {
+		selectedRoleType = 'ALL';
+		isFilterOpen = false;
+	}
 
 	const filteredRoles = $derived(
 		roles.filter((r) => {
+			if (selectedRoleType === 'SYSTEM' && !r.isSystem) return false;
+			if (selectedRoleType === 'CUSTOM' && r.isSystem) return false;
+
 			const query = searchQuery.toLowerCase().trim();
 			if (!query) return true;
 			return (
@@ -141,14 +154,15 @@
 		})
 	);
 
-	// Table Columns Definition
+	// Table Columns Definition (1 Value per Column)
 	const columns: TableColumn<RoleItem>[] = [
-		{ header: 'Peran / Role', key: 'name', width: '220px' },
+		{ header: 'Peran / Role', key: 'name', width: '180px' },
+		{ header: 'Kode Slug', key: 'slug', width: '130px' },
 		{ header: 'Deskripsi Wewenang', key: 'description' },
-		{ header: 'Cakupan Izin', key: 'slug', align: 'center', width: '160px' },
-		{ header: 'Pengguna', key: 'usersCount', align: 'center', width: '120px' },
-		{ header: 'Tipe', key: 'isSystem', align: 'center', width: '110px' },
-		{ header: 'Aksi', align: 'right', width: '140px', sortable: false }
+		{ header: 'Cakupan Izin', align: 'center', width: '150px' },
+		{ header: 'Pengguna', key: 'usersCount', align: 'center', width: '100px' },
+		{ header: 'Tipe', key: 'isSystem', align: 'center', width: '100px' },
+		{ header: 'Aksi', align: 'right', width: '130px', sortable: false }
 	];
 
 	// Permissions Modal State
@@ -279,23 +293,14 @@
 
 <div class="space-y-6 max-w-7xl mx-auto w-full pb-24 lg:pb-10">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-		<div>
-			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-				<KeyRound class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
-				<span>Manajemen Hak Akses & Role (RBAC)</span>
-			</h1>
-			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-				Kelola daftar peran pengguna ruang kerja, wewenang otorisasi, dan matriks izin granular sistem
-			</p>
-		</div>
-
-		<div class="flex items-center gap-2 self-start sm:self-auto">
-			<Button variant="primary" onclick={() => (isNewRoleModalOpen = true)} class="h-9 px-4">
-				<Plus class="w-4 h-4" />
-				<span>Buat Role Kustom</span>
-			</Button>
-		</div>
+	<div class="pb-2 border-b border-slate-200/80 dark:border-white/10">
+		<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+			<KeyRound class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
+			<span>Manajemen Hak Akses & Role (RBAC)</span>
+		</h1>
+		<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+			Kelola daftar peran pengguna ruang kerja, wewenang otorisasi, dan matriks izin granular sistem
+		</p>
 	</div>
 
 	<!-- Top Metric Ribbon Strip (4 Columns) -->
@@ -353,9 +358,10 @@
 		</div>
 	</div>
 
-	<!-- Search Toolbar -->
-	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-		<div class="relative flex-1 max-w-md">
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button & Create Button (Inline) -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
 			<Search class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
 			<input
 				type="text"
@@ -365,8 +371,62 @@
 			/>
 		</div>
 
-		<div class="text-[11px] text-slate-400 self-end sm:self-auto font-medium">
-			Menampilkan <strong class="text-slate-900 dark:text-white">{filteredRoles.length}</strong> dari {roles.length} Peran
+		<!-- Action Buttons: Filter & Buat Role (Aligned inline) -->
+		<div class="flex items-center gap-2">
+			<!-- Filter Button with Popover -->
+			<div class="relative">
+				<Button
+					variant="ghost"
+					onclick={() => (isFilterOpen = !isFilterOpen)}
+					class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {isFilterActive ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+				>
+					<Filter class="w-3.5 h-3.5 mr-1.5" />
+					<span>Filter</span>
+					{#if isFilterActive}
+						<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
+					{/if}
+				</Button>
+
+				{#if isFilterOpen}
+					<button
+						type="button"
+						aria-label="Tutup filter"
+						class="fixed inset-0 z-30 cursor-default bg-transparent"
+						onclick={() => (isFilterOpen = false)}
+					></button>
+
+					<div class="absolute right-0 top-full mt-2 w-56 p-3 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 shadow-2xl z-40 space-y-3">
+						<div>
+							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Peran</span>
+							<select
+								bind:value={selectedRoleType}
+								class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+							>
+								<option value="ALL">Semua Tipe</option>
+								<option value="SYSTEM">Peran Sistem (Bawaan)</option>
+								<option value="CUSTOM">Peran Kustom</option>
+							</select>
+						</div>
+
+						{#if isFilterActive}
+							<div class="pt-1 border-t border-slate-100 dark:border-white/5 flex justify-end">
+								<button
+									type="button"
+									onclick={resetFilters}
+									class="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+								>
+									Reset Filter
+								</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<Button variant="primary" onclick={() => (isNewRoleModalOpen = true)} class="h-9 px-3.5 text-xs">
+				<Plus class="w-4 h-4 mr-1.5" />
+				<span>Buat Role Kustom</span>
+			</Button>
 		</div>
 	</div>
 
@@ -385,31 +445,33 @@
 			{@const granted = getGrantedCount(role)}
 			{@const percentage = Math.round((granted / totalPermissionsCount) * 100)}
 			<tr class="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
-				<!-- Role Name & Slug -->
+				<!-- Kolom 1: Peran / Role (1 Nilai Nama) -->
 				<td class="p-3.5 whitespace-nowrap">
-					<div class="flex items-center gap-3">
-						<div class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 {role.slug === 'superadmin' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' : role.slug === 'pro' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : role.slug === 'free' ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400' : 'bg-blue-500/10 text-blue-500'}">
-							<Shield class="w-4 h-4" />
+					<div class="flex items-center gap-2.5">
+						<div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 {role.slug === 'superadmin' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' : role.slug === 'pro' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : role.slug === 'free' ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400' : 'bg-blue-500/10 text-blue-500'}">
+							<Shield class="w-3.5 h-3.5" />
 						</div>
-						<div>
-							<span class="font-semibold text-xs text-slate-900 dark:text-white block">
-								{role.name}
-							</span>
-							<span class="text-[10px] font-mono text-slate-400 block">
-								slug: {role.slug}
-							</span>
-						</div>
+						<span class="font-semibold text-xs text-slate-900 dark:text-white">
+							{role.name}
+						</span>
 					</div>
 				</td>
 
-				<!-- Description -->
+				<!-- Kolom 2: Kode Slug (1 Nilai Slug) -->
+				<td class="p-3.5 whitespace-nowrap">
+					<span class="text-xs font-mono text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded bg-slate-100 dark:bg-white/5">
+						{role.slug}
+					</span>
+				</td>
+
+				<!-- Kolom 3: Deskripsi Wewenang (1 Nilai Deskripsi) -->
 				<td class="p-3.5">
 					<p class="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed max-w-md">
 						{role.description}
 					</p>
 				</td>
 
-				<!-- Permissions Coverage Progress -->
+				<!-- Kolom 4: Cakupan Izin -->
 				<td class="p-3.5 whitespace-nowrap text-center">
 					<div class="inline-flex flex-col items-center gap-1 min-w-[110px]">
 						<div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200">
@@ -425,7 +487,7 @@
 					</div>
 				</td>
 
-				<!-- User Count -->
+				<!-- Kolom 5: Pengguna -->
 				<td class="p-3.5 whitespace-nowrap text-center">
 					<span class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg bg-slate-100/80 dark:bg-white/5">
 						<Users class="w-3.5 h-3.5 text-slate-400" />
@@ -433,7 +495,7 @@
 					</span>
 				</td>
 
-				<!-- Type Badge (System / Custom) -->
+				<!-- Kolom 6: Tipe Badge (SISTEM / KUSTOM) -->
 				<td class="p-3.5 whitespace-nowrap text-center">
 					{#if role.isSystem}
 						<span class="px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-wider bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-white/10">
@@ -446,7 +508,7 @@
 					{/if}
 				</td>
 
-				<!-- Actions -->
+				<!-- Kolom 7: Aksi (Atur Izin & Hapus) -->
 				<td class="p-3.5 whitespace-nowrap text-right">
 					<div class="flex items-center justify-end gap-1.5">
 						<Button

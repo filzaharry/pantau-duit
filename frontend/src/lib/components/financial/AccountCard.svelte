@@ -1,14 +1,15 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
 	import { formatRupiah } from '$lib/utils/formatters';
-	import { Building2, Wallet, Banknote, ArrowLeftRight } from 'lucide-svelte';
+	import { Building2, Wallet, Banknote, ArrowLeftRight, Trash2 } from 'lucide-svelte';
 
 	interface Props {
 		account: Account;
 		ontransfer?: (acc: Account) => void;
+		ondelete?: (acc: Account) => void;
 	}
 
-	let { account, ontransfer }: Props = $props();
+	let { account, ontransfer, ondelete }: Props = $props();
 
 	function getAccountIcon(type: string) {
 		switch (type) {
@@ -49,16 +50,30 @@
 			</div>
 		</div>
 
-		{#if ontransfer}
-			<button
-				type="button"
-				onclick={() => ontransfer(account)}
-				class="p-2 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-				aria-label="Transfer dari {account.name}"
-			>
-				<ArrowLeftRight class="w-4 h-4" />
-			</button>
-		{/if}
+		<div class="flex items-center gap-1">
+			{#if ontransfer}
+				<button
+					type="button"
+					onclick={() => ontransfer(account)}
+					class="p-1.5 rounded-lg text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+					aria-label="Transfer dari {account.name}"
+					title="Transfer Saldo"
+				>
+					<ArrowLeftRight class="w-4 h-4" />
+				</button>
+			{/if}
+			{#if ondelete}
+				<button
+					type="button"
+					onclick={() => ondelete(account)}
+					class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+					aria-label="Hapus rekening {account.name}"
+					title="Hapus Rekening"
+				>
+					<Trash2 class="w-4 h-4" />
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	<!-- Card Balance & Status -->

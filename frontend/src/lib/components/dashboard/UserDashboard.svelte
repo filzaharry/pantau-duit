@@ -13,24 +13,13 @@
 		Eye,
 		EyeOff,
 		ArrowLeftRight,
-		Building2,
-		Wallet,
-		Banknote,
 		ChevronRight,
 		CheckCircle2,
 		ArrowUpRight,
 		ArrowDownLeft,
-		BarChart3,
-		PieChart,
 		Trash2,
-		Shield,
-		Bot,
-		Sliders,
 		Plus,
-		Receipt,
-		Target,
-		TrendingUp,
-		MoreHorizontal
+		Receipt
 	} from 'lucide-svelte';
 
 	let isAddModalOpen = $state(false);
@@ -38,7 +27,6 @@
 
 	// Modals for Progressive Disclosure
 	let isBudgetModalOpen = $state(false);
-	let isChartModalOpen = $state(false);
 	let selectedTx = $state<Transaction | null>(null);
 
 	// Date formatted in Indonesian
@@ -53,6 +41,24 @@
 	const netSavings = $derived(
 		financialStore.monthlyIncome - financialStore.monthlyExpense
 	);
+
+	// Dynamic category breakdown from transactions for live SpendingDonut
+	const spendingByCategory = $derived.by(() => {
+		const categoryTotals: Record<string, { label: string; value: number; color: string }> = {};
+		for (const tx of financialStore.transactions) {
+			if (tx.transaction_type === 'EXPENSE') {
+				const cat = financialStore.categories.find((c) => c.id === tx.category_id);
+				const catName = cat?.name || tx.category_name || 'Lain-lain';
+				const catColor = cat?.color || '#007AFF';
+				if (!categoryTotals[catName]) {
+					categoryTotals[catName] = { label: catName, value: 0, color: catColor };
+				}
+				categoryTotals[catName].value += tx.amount;
+			}
+		}
+		return Object.values(categoryTotals);
+	});
+	const totalSpent = $derived(spendingByCategory.reduce((acc, c) => acc + c.value, 0));
 
 	// Total Budget Limit & Spent
 	const totalBudgetLimit = $derived(
@@ -79,7 +85,7 @@
 	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
 		<div>
 			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">
-				Halo, {authStore.user?.name || 'Budi Santoso'} 👋
+				Halo, {authStore.user?.name || 'Pengguna'} 👋
 			</h1>
 			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
 				{todayDate}
@@ -99,29 +105,10 @@
 
 
 
-	<!-- 3. HERO FINANCIAL CARD WITH 3D IMAGE BANNER & ENLARGED METRICS -->
-	<div class="relative overflow-hidden rounded-3xl border border-slate-200/70 dark:border-white/10 bg-white dark:bg-slate-900 transition-all">
-		<!-- Light mode 3D banner image -->
-		<img
-			src="/hero_banner_3d.jpg"
-			alt="Finance 3D Background"
-			class="absolute inset-0 w-full h-full object-cover object-[82%_center] sm:object-right pointer-events-none select-none dark:hidden"
-			loading="eager"
-		/>
-
-		<!-- Dark mode 3D banner image -->
-		<img
-			src="/hero_banner_dark_3d.jpg"
-			alt="Finance 3D Background Dark"
-			class="absolute inset-0 w-full h-full object-cover object-[82%_center] sm:object-right pointer-events-none select-none hidden dark:block"
-			loading="eager"
-		/>
-
-		<!-- Subtle ambient gradient veil for perfect contrast on text side -->
-		<div class="absolute inset-0 bg-gradient-to-r from-white/95 via-white/85 to-white/20 sm:from-white/95 sm:via-white/70 sm:to-transparent dark:from-slate-950/95 dark:via-slate-950/80 dark:to-slate-950/20 sm:dark:from-slate-950/95 sm:dark:via-slate-950/70 sm:dark:to-transparent pointer-events-none"></div>
-
-		<!-- Main Card Content -->
-		<div class="relative z-10 p-5 sm:p-7 flex flex-col gap-5 max-w-full lg:max-w-[68%]">
+	<!-- 3. HERO FINANCIAL CARD WITH 3D TRANSPARENT ASSET & ENLARGED METRICS -->
+	<div class="relative overflow-hidden rounded-3xl border border-slate-200/70 dark:border-white/10 bg-gradient-to-br from-white via-white to-blue-50/40 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] transition-all p-5 sm:p-7 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+		<!-- Left: Main Card Content -->
+		<div class="relative z-10 flex flex-col gap-5 w-full md:max-w-[62%] lg:max-w-[66%]">
 			<!-- Header: Title & Privacy Eye Toggle -->
 			<div class="flex items-center justify-between">
 				<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -137,7 +124,7 @@
 					<button
 						type="button"
 						onclick={() => (hideBalance = !hideBalance)}
-						class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1"
+						class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 cursor-pointer"
 						aria-label={hideBalance ? 'Tampilkan saldo' : 'Sembunyikan saldo'}
 					>
 						{#if hideBalance}
@@ -160,7 +147,7 @@
 				</h2>
 			</div>
 
-			<!-- 3 Essential Glance Metrics: Pemasukan, Pengeluaran, Tabungan (Enlarged Nominals) -->
+			<!-- 3 Essential Glance Metrics: Pemasukan, Pengeluaran, Tabungan -->
 			<div class="grid grid-cols-3 gap-2 sm:gap-4 p-3.5 sm:p-4 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/60 dark:border-white/10">
 				<!-- Inflow -->
 				<div class="flex flex-col">
@@ -196,7 +183,7 @@
 				<div class="flex flex-col text-right">
 					<div class="flex items-center justify-end gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
 						<span class="w-2 h-2 rounded-full bg-[#007AFF] shrink-0"></span>
-						<span class="truncate">Tabungan</span>
+						<span class="truncate">Sisa Uang Bersih</span>
 					</div>
 					<span class="text-base sm:text-lg lg:text-xl font-semibold text-[#007AFF] dark:text-[#0A84FF] mt-1.5 truncate tracking-tight">
 						{#if hideBalance}
@@ -212,10 +199,10 @@
 			<div class="p-3 sm:p-3.5 rounded-2xl bg-white/75 dark:bg-slate-900/75 backdrop-blur-md border border-slate-200/50 dark:border-white/5 space-y-2">
 				<div class="flex items-center justify-between text-xs">
 					<span class="text-slate-700 dark:text-slate-300 font-semibold">
-						Batas Belanja
+						Batas Belanja Bulanan
 					</span>
 					<span class="font-semibold text-emerald-600 dark:text-emerald-400">
-						Sisa: {formatRupiah(remainingBudget)}
+						Sisa Kuota: {formatRupiah(remainingBudget)}
 					</span>
 				</div>
 
@@ -223,231 +210,49 @@
 				<ProgressBar value={budgetPercent} variant="auto" size="md" />
 
 				<div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-					<span>Terpakai {formatRupiah(totalBudgetSpent)} / {formatRupiah(totalBudgetLimit)}</span>
+					<span>Terpakai {formatRupiah(totalBudgetSpent)} dari {formatRupiah(totalBudgetLimit)}</span>
 					<!-- Progressive Disclosure: Detail Kuota Button -->
 					<button
 						type="button"
 						onclick={() => (isBudgetModalOpen = true)}
-						class="font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline"
+						class="font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
 					>
-						Rincian &rarr;
+						Lihat Detail &rarr;
 					</button>
 				</div>
 			</div>
 		</div>
+
+		<!-- Right: 3D Transparent Illustration -->
+		<div class="hidden sm:flex items-center justify-center relative z-10 shrink-0 pr-2 lg:pr-6 pointer-events-none select-none">
+			<img
+				src="/dashboard-balance-3d.png"
+				alt="Total Saldo Finansial 3D"
+				class="w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 object-contain drop-shadow-2xl transform hover:scale-105 transition-transform"
+			/>
+		</div>
+
+		<!-- Subtle ambient background radial glow -->
+		<div class="absolute -right-10 -bottom-10 w-72 h-72 bg-gradient-to-br from-blue-500/15 via-indigo-500/10 to-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 	</div>
 
-	<!-- 4. REKENING & DOMPET (Clean 4-column cards with Blue Accents) -->
-	<div class="space-y-3">
+	<!-- 4. GRAFIK & ANALISIS PENGELUARAN (LANGSUNG TAMPIL TANPA PERLU KLIK MODAL) -->
+	<div class="space-y-3 pt-1">
 		<div class="flex items-center justify-between">
 			<span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-				Rekening & Dompet
+				Grafik & Analisis Pengeluaran
 			</span>
-			<a href="/accounts" class="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline flex items-center">
-				Kelola <ChevronRight class="w-3.5 h-3.5 ml-0.5" />
-			</a>
+			<span class="text-xs text-slate-400 font-medium">
+				Bulan Berjalan
+			</span>
 		</div>
 
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-			{#each financialStore.accounts as acc}
-				<div class="p-4 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06] flex flex-col justify-between h-36 transition-all hover:border-blue-500/30 hover:-translate-y-0.5">
-					<!-- Top Row: Icon and More Button -->
-					<div class="flex items-center justify-between">
-						<div class="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0" style="background-color: {acc.color || '#007AFF'};">
-							{#if acc.type === 'BANK'}
-								<Building2 class="w-5 h-5" />
-							{:else if acc.type === 'E_WALLET'}
-								<Wallet class="w-5 h-5" />
-							{:else}
-								<Banknote class="w-5 h-5" />
-							{/if}
-						</div>
-
-						<a href="/accounts" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1" title="Kelola Rekening">
-							<MoreHorizontal class="w-4 h-4" />
-						</a>
-					</div>
-
-					<!-- Bottom Row: Account Info -->
-					<div>
-						<h4 class="text-xs font-semibold text-slate-900 dark:text-white truncate">
-							{acc.name}
-						</h4>
-						<p class="text-[11px] text-slate-400 truncate">
-							{acc.type.replace('_', ' ')}
-						</p>
-
-						<div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 dark:border-white/5">
-							<div class="flex items-center gap-1.5">
-								<span class="w-2 h-2 rounded-full bg-[#007AFF]"></span>
-								<span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Aktif</span>
-							</div>
-							<span class="text-xs font-semibold text-slate-900 dark:text-white">
-								{#if hideBalance}
-									••••••
-								{:else}
-									{formatRupiah(acc.current_balance)}
-								{/if}
-							</span>
-						</div>
-					</div>
-				</div>
-			{/each}
-		</div>
-	</div>
-
-	<!-- 5. DUAL PANELS (Rincian Finansial & Aksi Cepat in Blue Accent) -->
-	<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
-		<!-- Left Panel: Rincian Finansial -->
-		<div class="p-5 sm:p-6 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06] flex flex-col justify-between space-y-5">
-			<div>
-				<h3 class="text-sm font-semibold text-slate-900 dark:text-white tracking-tight mb-4">
-					Rincian Finansial
-				</h3>
-
-				<div class="space-y-3.5 text-xs">
-					<!-- Row 1: Plan Type -->
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
-							<Wallet class="w-4 h-4 text-[#007AFF]" />
-							<span>Tipe Paket</span>
-						</div>
-						<span class="font-semibold text-slate-900 dark:text-white">Personal Pro</span>
-					</div>
-
-					<!-- Row 2: Monthly Budget -->
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
-							<Target class="w-4 h-4 text-[#007AFF]" />
-							<span>Batas Belanja Bulanan</span>
-						</div>
-						<span class="font-semibold text-slate-900 dark:text-white">{formatRupiah(totalBudgetLimit)}</span>
-					</div>
-
-					<!-- Row 3: Net Cashflow -->
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
-							<TrendingUp class="w-4 h-4 text-[#007AFF]" />
-							<span>Arus Kas Bersih</span>
-						</div>
-						<span class="font-semibold text-emerald-600 dark:text-emerald-400">
-							{netSavings >= 0 ? '+' : ''}{formatRupiah(netSavings)}
-						</span>
-					</div>
-
-					<!-- Row 4: Total Transactions -->
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
-							<Receipt class="w-4 h-4 text-[#007AFF]" />
-							<span>Transaksi Terdata</span>
-						</div>
-						<span class="font-semibold text-slate-900 dark:text-white">{financialStore.transactions.length} Mutasi</span>
-					</div>
-
-					<!-- Row 5: Telegram Integration -->
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2.5 text-slate-500 dark:text-slate-400">
-							<Bot class="w-4 h-4 text-[#007AFF]" />
-							<span>Bot Telegram</span>
-						</div>
-						<a href="/telegram" class="font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline flex items-center gap-1">
-							@pantauduit_bot <ChevronRight class="w-3.5 h-3.5" />
-						</a>
-					</div>
-				</div>
-			</div>
-
-			<!-- Full-Width Action Button -->
-			<button
-				type="button"
-				onclick={() => (isChartModalOpen = true)}
-				class="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#181c28] dark:hover:bg-[#202535] text-slate-800 dark:text-slate-200 text-xs font-semibold transition-colors flex items-center justify-center gap-2"
-			>
-				<PieChart class="w-4 h-4 text-[#007AFF]" />
-				<span>Buka Diagram & Analisis Finansial</span>
-			</button>
-		</div>
-
-		<!-- Right Panel: Aksi Cepat -->
-		<div class="p-5 sm:p-6 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06] flex flex-col justify-between space-y-4">
-			<div>
-				<h3 class="text-sm font-semibold text-slate-900 dark:text-white tracking-tight mb-3">
-					Aksi Cepat
-				</h3>
-
-				<div class="divide-y divide-slate-100 dark:divide-white/5">
-					<!-- Action 1: Catat Transaksi Baru -->
-					<button
-						type="button"
-						onclick={() => (isAddModalOpen = true)}
-						class="w-full py-3 flex items-center justify-between gap-3 text-left group hover:opacity-80 transition-opacity"
-					>
-						<div class="flex items-center gap-3 min-w-0">
-							<div class="w-9 h-9 rounded-xl bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-								<Plus class="w-4 h-4" />
-							</div>
-							<div class="min-w-0">
-								<h4 class="text-xs font-semibold text-slate-900 dark:text-white">Catat Transaksi</h4>
-								<p class="text-[11px] text-slate-400 truncate">Catat pengeluaran, pemasukan, atau transfer</p>
-							</div>
-						</div>
-						<ChevronRight class="w-4 h-4 text-slate-400 group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-all shrink-0" />
-					</button>
-
-					<!-- Action 2: Analisis Pos Belanja -->
-					<button
-						type="button"
-						onclick={() => (isChartModalOpen = true)}
-						class="w-full py-3 flex items-center justify-between gap-3 text-left group hover:opacity-80 transition-opacity"
-					>
-						<div class="flex items-center gap-3 min-w-0">
-							<div class="w-9 h-9 rounded-xl bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-								<BarChart3 class="w-4 h-4" />
-							</div>
-							<div class="min-w-0">
-								<h4 class="text-xs font-semibold text-slate-900 dark:text-white">Analisis Pos Belanja</h4>
-								<p class="text-[11px] text-slate-400 truncate">Buka diagram donat pengeluaran & grafik tren</p>
-							</div>
-						</div>
-						<ChevronRight class="w-4 h-4 text-slate-400 group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-all shrink-0" />
-					</button>
-
-					<!-- Action 3: Rincian Kuota Belanja -->
-					<button
-						type="button"
-						onclick={() => (isBudgetModalOpen = true)}
-						class="w-full py-3 flex items-center justify-between gap-3 text-left group hover:opacity-80 transition-opacity"
-					>
-						<div class="flex items-center gap-3 min-w-0">
-							<div class="w-9 h-9 rounded-xl bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-								<Target class="w-4 h-4" />
-							</div>
-							<div class="min-w-0">
-								<h4 class="text-xs font-semibold text-slate-900 dark:text-white">Rincian Kuota Belanja</h4>
-								<p class="text-[11px] text-slate-400 truncate">Periksa sisa kuota tiap pos pengeluaran bulanan</p>
-							</div>
-						</div>
-						<ChevronRight class="w-4 h-4 text-slate-400 group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-all shrink-0" />
-					</button>
-
-					<!-- Action 4: Kelola Seluruh Transaksi -->
-					<a
-						href="/transactions"
-						class="w-full py-3 flex items-center justify-between gap-3 text-left group hover:opacity-80 transition-opacity"
-					>
-						<div class="flex items-center gap-3 min-w-0">
-							<div class="w-9 h-9 rounded-xl bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-								<Receipt class="w-4 h-4" />
-							</div>
-							<div class="min-w-0">
-								<h4 class="text-xs font-semibold text-slate-900 dark:text-white">Riwayat Transaksi Lengkap</h4>
-								<p class="text-[11px] text-slate-400 truncate">Filter, cari, dan telusuri seluruh mutasi rekening</p>
-							</div>
-						</div>
-						<ChevronRight class="w-4 h-4 text-slate-400 group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-all shrink-0" />
-					</a>
-				</div>
-			</div>
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+			<SpendingDonut
+				slices={spendingByCategory.length > 0 ? spendingByCategory : undefined}
+				total={totalSpent > 0 ? totalSpent : undefined}
+			/>
+			<CashflowBar />
 		</div>
 	</div>
 
@@ -489,7 +294,7 @@
 								{tx.description}
 							</p>
 							<p class="text-xs text-slate-400 mt-0.5">
-								{tx.account_name || 'BCA'} &bull; {formatRelativeTime(tx.created_at || tx.transaction_date)}
+								{tx.account_name || 'Rekening'} &bull; {formatRelativeTime(tx.created_at || tx.transaction_date)}
 							</p>
 						</div>
 					</div>
@@ -504,6 +309,28 @@
 						</span>
 					</div>
 				</button>
+			{:else}
+				<div class="p-8 text-center">
+					<div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-400 mx-auto flex items-center justify-center mb-2.5">
+						<Receipt class="w-5 h-5" />
+					</div>
+					<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Belum ada riwayat transaksi</p>
+					<p class="text-[11px] text-slate-400 mt-0.5">Transaksi yang Anda catat manual atau via Bot Telegram akan muncul di sini.</p>
+					<button
+						type="button"
+						onclick={() => {
+							if (financialStore.accounts.length === 0) {
+								window.location.href = '/accounts';
+							} else {
+								isAddModalOpen = true;
+							}
+						}}
+						class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#007AFF] text-white text-xs font-semibold mt-3 hover:bg-blue-600 transition-colors cursor-pointer"
+					>
+						<Plus class="w-3.5 h-3.5" />
+						<span>{financialStore.accounts.length === 0 ? 'Tambah Rekening Pertama' : 'Catat Transaksi Pertama'}</span>
+					</button>
+				</div>
 			{/each}
 		</div>
 	</div>
@@ -541,6 +368,10 @@
 						<span>Sisa: {formatRupiah(Math.max(0, budget.amount - budget.spent_amount))}</span>
 						<span>Status: {pct >= 100 ? 'Overbudget' : pct >= 80 ? 'Waspada' : 'Aman'}</span>
 					</div>
+				</div>
+			{:else}
+				<div class="p-6 text-center text-xs text-slate-400">
+					Belum ada batas belanja yang dikonfigurasi.
 				</div>
 			{/each}
 		</div>
@@ -613,16 +444,4 @@
 			</div>
 		</Modal>
 	{/if}
-
-	<!-- 4. Financial Charts Modal (Bottom Sheet on Mobile) -->
-	<Modal
-		bind:open={isChartModalOpen}
-		title="Grafik Finansial"
-		description="Visualisasi pembagian pos pengeluaran dan tren arus kas"
-	>
-		<div class="space-y-6">
-			<SpendingDonut />
-			<CashflowBar />
-		</div>
-	</Modal>
 </div>

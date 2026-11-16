@@ -22,7 +22,8 @@
 		X,
 		Search,
 		Filter,
-		Eye
+		Eye,
+		Trash2
 	} from 'lucide-svelte';
 
 	let leaves = $state<LeaveRequest[]>([
@@ -119,12 +120,12 @@
 
 	let isAddModalOpen = $state(false);
 	let newLeave = $state({
-		employee_name: 'Reza Aditya Pratama',
-		employee_nik: 'EMP-001',
+		employee_name: '',
+		employee_nik: '',
 		leave_type: LeaveType.ANNUAL,
-		start_date: '2026-10-12',
-		end_date: '2026-10-14',
-		total_days: 3,
+		start_date: '',
+		end_date: '',
+		total_days: 0,
 		reason: ''
 	});
 
@@ -158,6 +159,11 @@
 		notificationStore.info('Pengajuan cuti ditolak.', 'Status Diperbarui');
 	}
 
+	function handleDeleteLeave(lv: LeaveRequest) {
+		leaves = leaves.filter((l) => l.id !== lv.id);
+		notificationStore.info(`Pengajuan cuti ${lv.employee_name} (${lv.employee_nik}) berhasil dihapus.`, 'Cuti Dihapus');
+	}
+
 	const columns: TableColumn<LeaveRequest>[] = [
 		{ key: 'employee_nik', header: 'NIK', sortable: true, width: '90px' },
 		{ key: 'employee_name', header: 'Nama Karyawan', sortable: true },
@@ -172,23 +178,16 @@
 
 <div class="space-y-6 max-w-7xl mx-auto w-full">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-		<div>
-			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
-				<div class="p-2 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-					<CalendarCheck class="w-6 h-6" />
-				</div>
-				<span>Presensi & Pengajuan Cuti</span>
-			</h1>
-			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-				Kelola persetujuan cuti tahunan, izin sakit, dan jadwal ketersediaan kerja tim
-			</p>
-		</div>
-
-		<Button variant="primary" onclick={() => (isAddModalOpen = true)}>
-			<CalendarPlus class="w-4 h-4 mr-1.5" />
-			<span>Ajukan Cuti Baru</span>
-		</Button>
+	<div class="pb-2 border-b border-slate-200/80 dark:border-white/10">
+		<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+			<div class="p-2 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+				<CalendarCheck class="w-6 h-6" />
+			</div>
+			<span>Presensi & Pengajuan Cuti</span>
+		</h1>
+		<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+			Kelola persetujuan cuti tahunan, izin sakit, dan jadwal ketersediaan kerja tim
+		</p>
 	</div>
 
 	<!-- Stats Cards -->
@@ -213,34 +212,47 @@
 		</div>
 	</div>
 
-	<!-- Filter & Search Controls -->
-	<div class="p-4 rounded-3xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06] flex flex-col sm:flex-row gap-3 items-center justify-between">
-		<div class="w-full sm:w-80 relative">
-			<Search class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button & Create Button (Inline) -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
+			<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 			<input
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Cari nama karyawan, NIK, atau alasan..."
-				class="w-full pl-9 pr-4 py-2 rounded-2xl bg-slate-100/80 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#007AFF]"
+				class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
 			/>
 		</div>
 
-		<div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-			<Button variant="outline" size="sm" onclick={() => (isFilterModalOpen = true)}>
-				<Filter class="w-4 h-4 mr-1.5" />
+		<!-- Action Buttons: Filter & Ajukan Cuti Baru (Aligned inline) -->
+		<div class="flex items-center gap-2">
+			<Button
+				variant="ghost"
+				onclick={() => (isFilterModalOpen = true)}
+				class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {activeFiltersCount > 0 ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+			>
+				<Filter class="w-3.5 h-3.5 mr-1.5" />
 				<span>Filter</span>
 				{#if activeFiltersCount > 0}
-					<span class="ml-1.5 px-1.5 py-0.5 rounded-full bg-[#007AFF] text-white text-[10px] font-bold">
-						{activeFiltersCount}
-					</span>
+					<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
 				{/if}
 			</Button>
 
 			{#if activeFiltersCount > 0 || searchQuery}
-				<Button variant="ghost" size="sm" onclick={resetFilters}>
+				<button
+					type="button"
+					onclick={resetFilters}
+					class="text-xs font-semibold text-rose-500 hover:underline px-2 cursor-pointer"
+				>
 					Reset
-				</Button>
+				</button>
 			{/if}
+
+			<Button variant="primary" onclick={() => (isAddModalOpen = true)} class="h-9 px-3.5 text-xs">
+				<CalendarPlus class="w-4 h-4 mr-1.5" />
+				<span>Ajukan Cuti Baru</span>
+			</Button>
 		</div>
 	</div>
 
@@ -292,16 +304,26 @@
 					<StatusBadge status={l.status} type="leave" size="sm" />
 				</td>
 
-				<!-- Action (Detail) -->
+				<!-- Action (Detail & Delete) -->
 				<td class="p-3.5 whitespace-nowrap text-center">
-					<button
-						type="button"
-						onclick={() => openDetail(l)}
-						class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-						title="Lihat Detail & Keputusan Cuti"
-					>
-						<Eye class="w-4 h-4" />
-					</button>
+					<div class="flex items-center justify-center gap-1">
+						<button
+							type="button"
+							onclick={() => openDetail(l)}
+							class="p-1.5 rounded-xl text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+							title="Lihat Detail & Keputusan Cuti"
+						>
+							<Eye class="w-4 h-4" />
+						</button>
+						<button
+							type="button"
+							onclick={() => handleDeleteLeave(l)}
+							class="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+							title="Hapus Pengajuan Cuti"
+						>
+							<Trash2 class="w-4 h-4" />
+						</button>
+					</div>
 				</td>
 			</tr>
 		{/snippet}

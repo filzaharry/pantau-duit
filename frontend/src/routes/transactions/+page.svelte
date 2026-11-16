@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { financialStore } from '$lib/stores/financial.svelte';
+	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import { formatRupiah, formatDateTime } from '$lib/utils/formatters';
 	import Table, { type TableColumn } from '$lib/components/ui/Table.svelte';
 	import AddTransactionModal from '$lib/components/financial/AddTransactionModal.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Input from '$lib/components/ui/Input.svelte';
+	import AmountInput from '$lib/components/ui/AmountInput.svelte';
 	import DatePicker from '$lib/components/ui/DatePicker.svelte';
+	import CategorySuggestSelect from '$lib/components/ui/CategorySuggestSelect.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import type { Transaction, TransactionType } from '$lib/types';
 	import {
@@ -27,6 +31,7 @@
 		Eye,
 		Shield,
 		Trash2,
+		Pencil,
 		Send,
 		Crown,
 		Sparkles,
@@ -46,6 +51,39 @@
 
 	let isAddModalOpen = $state(false);
 	let isFilterModalOpen = $state(false);
+	let isEditModalOpen = $state(false);
+	let editingTransaction = $state<Transaction | null>(null);
+	const editingAccount = $derived(financialStore.accounts.find((a) => a.id === editingTransaction?.account_id));
+	let editDescription = $state('');
+	let editAmount = $state(0);
+	let editCategoryId = $state('');
+	let isSubmittingEdit = $state(false);
+
+	function openEditModal(tx: Transaction) {
+		editingTransaction = tx;
+		editDescription = tx.description;
+		editAmount = tx.amount;
+		editCategoryId = tx.category_id || '';
+		isEditModalOpen = true;
+	}
+
+	async function handleSaveEdit() {
+		if (!editingTransaction) return;
+		if (!editDescription.trim()) return;
+		if (editAmount <= 0) return;
+
+		isSubmittingEdit = true;
+		try {
+			await financialStore.updateTransaction(editingTransaction.id, {
+				description: editDescription.trim(),
+				amount: editAmount,
+				category_id: editCategoryId || undefined
+			});
+			isEditModalOpen = false;
+		} finally {
+			isSubmittingEdit = false;
+		}
+	}
 
 	let searchQuery = $state('');
 	let selectedType = $state<string>('ALL');
@@ -195,7 +233,7 @@
 
 <div class="space-y-4 sm:space-y-5 max-w-7xl mx-auto w-full pb-6 sm:pb-8">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80 dark:border-white/10">
 		<div>
 			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
 				<Receipt class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
@@ -206,14 +244,6 @@
 					? 'Pemasukan langganan dan pengeluaran operasional sistem'
 					: 'Kelola seluruh arus kas, pengeluaran, pemasukan, dan mutasi antar rekening'}
 			</p>
-		</div>
-
-		<!-- Action Buttons -->
-		<div class="flex items-center gap-2 w-full sm:w-auto">
-			<Button variant="primary" class="w-full sm:w-auto justify-center" onclick={() => (isAddModalOpen = true)}>
-				<Plus class="w-4 h-4" />
-				<span>Catat Transaksi</span>
-			</Button>
 		</div>
 	</div>
 
@@ -288,10 +318,10 @@
 		</div>
 	</div>
 
-	<!-- Minimalist Toolbar: Search Field & Button Filter Only (Unified h-9 height) -->
-	<div class="flex items-center gap-2.5">
-		<!-- Search Field -->
-		<div class="relative flex-1">
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button, & Tambah Transaksi -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
 			<Search class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 			<input
 				type="text"
@@ -311,22 +341,41 @@
 			{/if}
 		</div>
 
-		<!-- Button Filter (h-9 unified) -->
-		<button
-			type="button"
-			onclick={() => (isFilterModalOpen = true)}
-			class="h-9 px-3.5 rounded-xl border {activeFilterCount > 0
-				? 'border-[#007AFF]/60 bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF]'
-				: 'border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#131620] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5'} text-xs sm:text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-		>
-			<Filter class="w-3.5 h-3.5 text-[#007AFF] dark:text-[#0A84FF]" />
-			<span>Filter</span>
-			{#if activeFilterCount > 0}
-				<span class="px-1.5 py-0.2 rounded-full bg-[#007AFF] text-white text-[10px] font-semibold leading-none">
-					{activeFilterCount}
-				</span>
-			{/if}
-		</button>
+		<!-- Action Buttons: Filter & Tambah Transaksi (Inline) -->
+		<div class="flex items-center gap-2">
+			<!-- Button Filter (h-9 unified) -->
+			<button
+				type="button"
+				onclick={() => (isFilterModalOpen = true)}
+				class="h-9 px-3.5 rounded-xl border {activeFilterCount > 0
+					? 'border-[#007AFF]/60 bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF]'
+					: 'border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#131620] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5'} text-xs sm:text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+			>
+				<Filter class="w-3.5 h-3.5 text-[#007AFF] dark:text-[#0A84FF]" />
+				<span>Filter</span>
+				{#if activeFilterCount > 0}
+					<span class="px-1.5 py-0.2 rounded-full bg-[#007AFF] text-white text-[10px] font-semibold leading-none">
+						{activeFilterCount}
+					</span>
+				{/if}
+			</button>
+
+			<Button
+				variant="primary"
+				class="h-9 px-3.5 text-xs sm:text-sm justify-center"
+				onclick={() => {
+					if (financialStore.accounts.length === 0) {
+						notificationStore.showToast('Anda harus memiliki minimal 1 rekening/dompet sebelum mencatat transaksi.', 'warning');
+						window.location.href = '/accounts';
+						return;
+					}
+					isAddModalOpen = true;
+				}}
+			>
+				<Plus class="w-4 h-4 mr-1" />
+				<span>Catat Transaksi</span>
+			</Button>
+		</div>
 	</div>
 
 	<!-- Active Filter Tags (Clean & dismissible) -->
@@ -398,8 +447,8 @@
 		badge="{filteredTransactions.length} Transaksi"
 		{columns}
 		items={filteredTransactions}
-		emptyMessage="Tidak ada transaksi yang cocok"
-		emptyDescription="Coba ubah kata kunci pencarian atau sesuaikan filter di tombol Filter."
+		emptyMessage={financialStore.accounts.length === 0 ? "Belum ada rekening atau dompet terdaftar" : "Tidak ada transaksi yang cocok"}
+		emptyDescription={financialStore.accounts.length === 0 ? "Tambahkan rekening bank atau dompet digital pertama Anda di menu Dompet & Rekening sebelum mencatat transaksi." : "Coba ubah kata kunci pencarian atau sesuaikan filter di tombol Filter."}
 	>
 		{#snippet row(transaction, index)}
 			{@const isIncome = transaction.transaction_type === 'INCOME'}
@@ -474,21 +523,70 @@
 					{amountPrefix}{formatRupiah(transaction.amount)}
 				</td>
 
-				<!-- Aksi -->
+				<!-- Aksi (Update & Delete) -->
 				<td class="p-3.5 whitespace-nowrap text-right">
-					<button
-						type="button"
-						onclick={() => financialStore.deleteTransaction(transaction.id)}
-						class="opacity-60 hover:opacity-100 p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
-						aria-label="Hapus transaksi"
-						title="Hapus transaksi"
-					>
-						<Trash2 class="w-3.5 h-3.5" />
-					</button>
+					<div class="flex items-center justify-end gap-1">
+						<button
+							type="button"
+							onclick={() => openEditModal(transaction)}
+							class="p-1.5 rounded-lg text-slate-400 hover:text-[#007AFF] hover:bg-slate-100 dark:hover:bg-white/5 transition-all cursor-pointer"
+							aria-label="Edit transaksi"
+							title="Edit transaksi"
+						>
+							<Pencil class="w-3.5 h-3.5" />
+						</button>
+						<button
+							type="button"
+							onclick={() => financialStore.deleteTransaction(transaction.id)}
+							class="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
+							aria-label="Hapus transaksi"
+							title="Hapus transaksi"
+						>
+							<Trash2 class="w-3.5 h-3.5" />
+						</button>
+					</div>
 				</td>
 			</tr>
 		{/snippet}
 	</Table>
+
+	<!-- Edit Transaction Modal -->
+	<Modal
+		bind:open={isEditModalOpen}
+		title="Ubah Transaksi"
+		description="Perbarui informasi catatan atau nominal transaksi"
+	>
+		<div class="space-y-4 text-xs">
+			<Input
+				bind:value={editDescription}
+				label="Deskripsi Transaksi"
+				placeholder="Contoh: Beli Kopi, Makan Siang"
+			/>
+
+			<AmountInput
+				bind:value={editAmount}
+				label="Nominal Transaksi (Rp)"
+				referenceBalance={editingAccount?.current_balance ?? financialStore.totalBalance}
+				balanceLabel={editingAccount ? `Saldo ${editingAccount.name}` : 'Saldo Tabungan'}
+			/>
+
+			{#if editingTransaction && editingTransaction.transaction_type !== 'TRANSFER'}
+				<CategorySuggestSelect
+					bind:value={editCategoryId}
+					categoryType={editingTransaction.transaction_type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
+					label="Kategori"
+					placeholder="Ketik atau pilih kategori..."
+				/>
+			{/if}
+		</div>
+
+		{#snippet footer()}
+			<Button variant="ghost" onclick={() => (isEditModalOpen = false)}>Batal</Button>
+			<Button variant="primary" onclick={handleSaveEdit} disabled={isSubmittingEdit}>
+				{isSubmittingEdit ? 'Menyimpan...' : 'Simpan Perubahan'}
+			</Button>
+		{/snippet}
+	</Modal>
 
 	<!-- Add Transaction Modal -->
 	<AddTransactionModal bind:open={isAddModalOpen} />

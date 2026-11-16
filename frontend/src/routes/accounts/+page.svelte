@@ -14,7 +14,7 @@
 	import GlassSurface from '$lib/components/ui/GlassSurface.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
-	import type { AccountType } from '$lib/types';
+	import type { Account, AccountType } from '$lib/types';
 	import {
 		Wallet,
 		Plus,
@@ -28,12 +28,39 @@
 		Globe,
 		Shield,
 		ArrowUpRight,
-		TrendingUp
+		TrendingUp,
+		Search,
+		Filter,
+		Trash2
 	} from 'lucide-svelte';
-
 
 	let isTransferModalOpen = $state(false);
 	let isAddAccountOpen = $state(false);
+	let searchQuery = $state('');
+	let selectedType = $state<'ALL' | 'BANK' | 'E_WALLET' | 'CASH' | 'INVESTMENT'>('ALL');
+	let isFilterOpen = $state(false);
+
+	const isFilterActive = $derived(selectedType !== 'ALL');
+
+	function resetFilters() {
+		selectedType = 'ALL';
+		isFilterOpen = false;
+	}
+
+	const filteredAccounts = $derived(
+		financialStore.accounts.filter((a) => {
+			if (selectedType !== 'ALL' && a.type !== selectedType) return false;
+			if (searchQuery.trim()) {
+				const q = searchQuery.toLowerCase();
+				return a.name.toLowerCase().includes(q) || (a.institution_name && a.institution_name.toLowerCase().includes(q));
+			}
+			return true;
+		})
+	);
+
+	function handleDeleteAccount(account: Account) {
+		financialStore.deleteAccount(account.id);
+	}
 
 	// Add Account Form
 	let accountName = $state('');
@@ -50,30 +77,21 @@
 		{ value: 'INVESTMENT', label: 'Rekening Investasi (RDN/Crypto)' }
 	];
 
-	function handleAddAccount() {
+	async function handleAddAccount() {
 		formError = '';
 		if (!accountName.trim()) {
 			formError = 'Nama rekening harus diisi.';
 			return;
 		}
 
-		financialStore.accounts.push({
-			id: `acc-${Date.now()}`,
-			tenant_id: 'tenant-demo-uuid-001',
+		await financialStore.addAccount({
 			name: accountName.trim(),
 			type: accountType,
-			currency: 'IDR',
-			current_balance: initialBalance,
-			balance: initialBalance,
-			status: 'ACTIVE',
-			institution_name: institutionName.trim() || undefined,
-			account_number: accountNumber.trim() || undefined,
-			is_active: true,
-			created_at: new Date().toISOString(),
-			updated_at: new Date().toISOString()
+			opening_balance: initialBalance,
+			account_number: accountNumber.trim(),
+			institution_name: institutionName.trim()
 		});
 
-		notificationStore.toast(`Rekening ${accountName} berhasil ditambahkan!`, 'success');
 		isAddAccountOpen = false;
 		accountName = '';
 		institutionName = '';
@@ -103,32 +121,17 @@
 
 <div class="space-y-6 max-w-7xl mx-auto w-full pb-24 lg:pb-10">
 	<!-- Page Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-		<div>
-			<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-				<Wallet class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
-				<span>{authStore.isSuperuser ? 'Kas & Rekening Sistem' : 'Rekening & Dompet Digital'}</span>
-			</h1>
-			<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-				{authStore.isSuperuser
-					? 'Saldo terkumpul dari payment gateway dan bank operasional'
-					: 'Kelola seluruh saldo akun bank, e-wallet, uang tunai, dan akun investasi'}
-			</p>
-		</div>
-
-			<!-- Action Buttons -->
-			<div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-				<Button variant="outline" class="w-full sm:w-auto justify-center" onclick={() => (isTransferModalOpen = true)}>
-					<ArrowLeftRight class="w-4 h-4" />
-					<span>Transfer Saldo</span>
-				</Button>
-
-				<Button variant="primary" class="w-full sm:w-auto justify-center" onclick={() => (isAddAccountOpen = true)}>
-					<Plus class="w-4 h-4" />
-					<span>Tambah Rekening</span>
-				</Button>
-			</div>
-		</div>
+	<div class="pb-2 border-b border-slate-200/80 dark:border-white/10">
+		<h1 class="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+			<Wallet class="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
+			<span>{authStore.isSuperuser ? 'Kas & Rekening Sistem' : 'Rekening & Dompet Digital'}</span>
+		</h1>
+		<p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+			{authStore.isSuperuser
+				? 'Saldo terkumpul dari payment gateway dan bank operasional'
+				: 'Kelola seluruh saldo akun bank, e-wallet, uang tunai, dan akun investasi'}
+		</p>
+	</div>
 
 	<!-- Top Metric Ribbon Strip (Segmented Accounts Overview - 2x2 on mobile, 4-col on desktop) -->
 	<div class="p-3 sm:p-5 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06]">
@@ -189,10 +192,99 @@
 		</div>
 	</div>
 
+	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button & Action Buttons (Inline) -->
+	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+		<!-- Search Field (Max 40% Width) -->
+		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
+			<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Cari rekening atau nama bank..."
+				class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
+			/>
+		</div>
+
+		<!-- Action Buttons: Filter, Transfer, Tambah Rekening (Aligned inline) -->
+		<div class="flex items-center gap-2">
+			<!-- Filter Button with Popover -->
+			<div class="relative">
+				<Button
+					variant="ghost"
+					onclick={() => (isFilterOpen = !isFilterOpen)}
+					class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {isFilterActive ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+				>
+					<Filter class="w-3.5 h-3.5 mr-1.5" />
+					<span>Filter</span>
+					{#if isFilterActive}
+						<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
+					{/if}
+				</Button>
+
+				{#if isFilterOpen}
+					<button
+						type="button"
+						aria-label="Tutup menu filter"
+						class="fixed inset-0 z-30 cursor-default bg-transparent"
+						onclick={() => (isFilterOpen = false)}
+					></button>
+
+					<div class="absolute right-0 top-full mt-2 w-56 p-3 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 shadow-2xl z-40 space-y-3">
+						<div>
+							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Rekening</span>
+							<select
+								bind:value={selectedType}
+								class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+							>
+								<option value="ALL">Semua Tipe</option>
+								<option value="BANK">Rekening Bank</option>
+								<option value="E_WALLET">Dompet Digital</option>
+								<option value="CASH">Uang Tunai</option>
+								<option value="INVESTMENT">Investasi</option>
+							</select>
+						</div>
+
+						{#if isFilterActive}
+							<div class="pt-1 border-t border-slate-100 dark:border-white/5 flex justify-end">
+								<button
+									type="button"
+									onclick={resetFilters}
+									class="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+								>
+									Reset Filter
+								</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<Button
+				variant="outline"
+				class="h-9 px-3 text-xs"
+				onclick={() => {
+					if (financialStore.accounts.length < 2) {
+						notificationStore.showToast('Transfer membutuhkan minimal 2 rekening terdaftar.', 'warning');
+						return;
+					}
+					isTransferModalOpen = true;
+				}}
+			>
+				<ArrowLeftRight class="w-3.5 h-3.5 mr-1.5" />
+				<span>Transfer</span>
+			</Button>
+
+			<Button variant="primary" class="h-9 px-3.5 text-xs" onclick={() => (isAddAccountOpen = true)}>
+				<Plus class="w-4 h-4 mr-1.5" />
+				<span>Tambah Rekening</span>
+			</Button>
+		</div>
+	</div>
+
 	<!-- Accounts Cards Grid -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-		{#each financialStore.accounts as account}
-			<AccountCard {account} />
+		{#each filteredAccounts as account}
+			<AccountCard {account} ondelete={handleDeleteAccount} />
 		{/each}
 
 		<!-- + Tambah Rekening Interactive Card (Responsive horizontal strip on mobile, vertical card on desktop) -->
@@ -248,6 +340,7 @@
 			<AmountInput
 				bind:value={initialBalance}
 				label="Saldo Awal Saat Ini"
+				showPercentageChips={false}
 			/>
 
 			{#if formError}
