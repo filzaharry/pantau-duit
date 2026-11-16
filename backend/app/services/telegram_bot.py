@@ -328,12 +328,16 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
                 select(User).where(User.email.ilike(pairing_key))
             ).scalar_one_or_none()
 
-        # 2. Match by Pairing Code (e.g. PD-994812 -> default admin)
+        # 2. Match by Pairing Code (e.g. PD-994812 -> default user with accounts or admin)
         elif pairing_key.upper().startswith("PD-") or pairing_key == "PD-994812":
-            # Link to active admin/superuser or first user
+            # Link to active user with accounts (prefer real user like filzaharry / budi)
             target_user = db.execute(
-                select(User).where(User.email == "admin@pantauduit.id")
+                select(User).where(User.email == "harryfilza@gmail.com")
             ).scalar_one_or_none()
+            if not target_user:
+                target_user = db.execute(
+                    select(User).where(User.email == "admin@pantauduit.id")
+                ).scalar_one_or_none()
             if not target_user:
                 target_user = db.execute(select(User)).scalars().first()
 
@@ -375,13 +379,22 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
             tg_account.auth_date = datetime.now(timezone.utc)
             db.flush()
 
-        # Find user's active tenant
-        tu = db.execute(
+        # Find user's active tenant (prioritize one with active accounts)
+        tu_list = db.execute(
             select(TenantUser).where(TenantUser.user_id == target_user.id, TenantUser.status == "ACTIVE")
-        ).scalars().first()
+        ).scalars().all()
         tenant = None
-        if tu:
-            tenant = db.execute(select(Tenant).where(Tenant.id == tu.tenant_id)).scalar_one_or_none()
+        for item in tu_list:
+            t = db.execute(select(Tenant).where(Tenant.id == item.tenant_id)).scalar_one_or_none()
+            if t:
+                has_acc = db.execute(
+                    select(Account).where(Account.tenant_id == t.id, Account.deleted_at.is_(None))
+                ).first()
+                if has_acc:
+                    tenant = t
+                    break
+                if not tenant:
+                    tenant = t
 
         if not tenant:
             tenant = db.execute(select(Tenant)).scalars().first()
@@ -459,11 +472,23 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
         )
         return {"status": "user_missing"}
 
-    # Find tenant
-    tu = db.execute(
+    # Find tenant - prioritize tenant with accounts
+    tu_list = db.execute(
         select(TenantUser).where(TenantUser.user_id == user.id, TenantUser.status == "ACTIVE")
-    ).scalars().first()
-    tenant = db.execute(select(Tenant).where(Tenant.id == tu.tenant_id)).scalar_one_or_none() if tu else None
+    ).scalars().all()
+    tenant = None
+    for tu_item in tu_list:
+        t_cand = db.execute(select(Tenant).where(Tenant.id == tu_item.tenant_id)).scalar_one_or_none()
+        if t_cand:
+            has_acc = db.execute(
+                select(Account).where(Account.tenant_id == t_cand.id, Account.deleted_at.is_(None))
+            ).first()
+            if has_acc:
+                tenant = t_cand
+                break
+            if not tenant:
+                tenant = t_cand
+
     if not tenant:
         tenant = db.execute(select(Tenant)).scalars().first()
 
@@ -574,17 +599,25 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
     ).scalars().all()
 
     if not accounts:
-        send_telegram_message(
-            bot_token, chat_id,
-            "⚠️ Anda belum memiliki akun rekening/dompet aktif untuk mencatat transaksi.\n"
-            "Silakan tambahkan di https://pantau-duit.exavolt.net/accounts"
+        # Auto-provision a default cash wallet so user can transact immediately
+        default_acc = Account(
+            tenant_id=tenant_id,
+            name="Dompet Tunai",
+            type="CASH",
+            currency="IDR",
+            opening_balance=Decimal("0.00"),
+            current_balance=Decimal("0.00"),
+            status="ACTIVE",
+            icon="/wallets/cash.svg",
+            color="#10B981"
         )
-        return {"status": "no_account_available"}
+        db.add(default_acc)
+        db.flush()
+        accounts = [default_acc]
 
     categories = db.execute(
         select(Category).where(
-            Category.tenant_id.in_([tenant_id, None]),
-            Category.deleted_at.is_(None)
+            Category.tenant_id.in_([tenant_id, None])
         )
     ).scalars().all()
 
