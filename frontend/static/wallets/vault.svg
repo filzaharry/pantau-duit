@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-vault" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="url(#bg-vault)"/>
+  <rect x="16" y="16" width="88" height="88" rx="20" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.2"/>
+  <!-- Safe Box / Vault -->
+  <g transform="translate(60, 52)">
+    <rect x="-28" y="-22" width="56" height="44" rx="8" fill="url(#metal)"/>
+    <circle cx="-4" cy="0" r="14" fill="#334155"/>
+    <circle cx="-4" cy="0" r="9" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="3,3"/>
+    <circle cx="-4" cy="0" r="4" fill="#CBD5E1"/>
+    <!-- Wheel spoke -->
+    <rect x="-6" y="-1" width="4" height="2" fill="#0F172A"/>
+    <!-- Handle -->
+    <rect x="16" y="-10" width="4" height="20" rx="2" fill="#0F172A"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" letter-spacing="1">BRANKAS</text>
+</svg>

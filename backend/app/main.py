@@ -292,6 +292,8 @@ class AccountCreate(BaseModel):
     type: str = "BANK"
     account_number: Optional[str] = None
     opening_balance: float = 0.0
+    color: Optional[str] = "#007AFF"
+    icon: Optional[str] = "bca"
 
 class CategoryCreate(BaseModel):
     name: str
@@ -414,7 +416,11 @@ def get_accounts(current_user: User = Depends(get_current_user), db: Session = D
         return []
 
     accs = db.execute(
-        select(Account).where(Account.tenant_id.in_(tenant_ids), Account.status == "ACTIVE")
+        select(Account).where(
+            Account.tenant_id.in_(tenant_ids),
+            Account.status == "ACTIVE",
+            Account.deleted_at.is_(None)
+        )
     ).scalars().all()
     results = []
     for a in accs:
@@ -432,7 +438,7 @@ def get_accounts(current_user: User = Depends(get_current_user), db: Session = D
             "status": a.status,
             "is_active": True,
             "color": a.color or "#007AFF",
-            "icon": a.icon or "building-columns"
+            "icon": a.icon or "bca"
         })
     return results
 
@@ -445,17 +451,63 @@ def create_account(payload: AccountCreate, current_user: User = Depends(get_curr
 
     new_acc = Account(
         tenant_id=tenant_id,
-        name=payload.name,
+        name=payload.name.strip(),
         type=payload.type,
-        account_number=payload.account_number or "",
+        account_number=payload.account_number.strip() if payload.account_number else "",
         currency="IDR",
         opening_balance=Decimal(str(payload.opening_balance)),
         current_balance=Decimal(str(payload.opening_balance)),
         status="ACTIVE",
-        color="#007AFF",
-        icon="wallet"
+        color=payload.color or "#007AFF",
+        icon=payload.icon or "bca"
     )
     db.add(new_acc)
+    db.flush()
+
+    # Automatically create the first INCOME transaction for initial balance
+    if payload.opening_balance > 0:
+        init_cat = db.execute(
+            select(Category).where(
+                Category.tenant_id == tenant_id,
+                Category.type == "INCOME",
+                or_(Category.name.ilike("%saldo awal%"), Category.name.ilike("%income%"), Category.name.ilike("%pendapatan%"))
+            )
+        ).scalars().first()
+        if not init_cat:
+            init_cat = db.execute(
+                select(Category).where(
+                    Category.tenant_id == tenant_id,
+                    Category.type == "INCOME"
+                )
+            ).scalars().first()
+        if not init_cat:
+            init_cat = Category(
+                tenant_id=tenant_id,
+                name="Saldo Awal",
+                slug="saldo-awal",
+                type="INCOME",
+                icon="wallet",
+                color="#10B981",
+                is_system=True
+            )
+            db.add(init_cat)
+            db.flush()
+
+        init_tx = Transaction(
+            tenant_id=tenant_id,
+            account_id=new_acc.id,
+            category_id=init_cat.id,
+            amount=Decimal(str(payload.opening_balance)),
+            transaction_type="INCOME",
+            transaction_date=datetime.now(timezone.utc),
+            source="SYSTEM",
+            status="COMPLETED",
+            description=f"Saldo Awal: {new_acc.name}",
+            notes="Inisiasi saldo awal saat pembuatan dompet/rekening",
+            created_by=current_user.id
+        )
+        db.add(init_tx)
+
     db.commit()
     db.refresh(new_acc)
 
@@ -488,13 +540,19 @@ def update_account(acc_id: str, payload: AccountCreate, current_user: User = Dep
     if not acc:
         raise HTTPException(status_code=404, detail="Rekening tidak ditemukan atau bukan milik akun Anda")
     
-    acc.name = payload.name.strip()
-    acc.type = payload.type
+    if payload.name:
+        acc.name = payload.name.strip()
+    if payload.type:
+        acc.type = payload.type
     if payload.account_number is not None:
         acc.account_number = payload.account_number.strip()
+    if payload.icon:
+        acc.icon = payload.icon
+    if payload.color:
+        acc.color = payload.color
     db.commit()
     db.refresh(acc)
-    return {"message": "Rekening berhasil diperbarui", "id": str(acc.id)}
+    return {"message": "Rekening berhasil diperbarui", "id": str(acc.id), "icon": acc.icon}
 
 @app.delete("/api/accounts/{acc_id}")
 def delete_account(acc_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -510,9 +568,22 @@ def delete_account(acc_id: str, current_user: User = Depends(get_current_user), 
     if not acc:
         raise HTTPException(status_code=404, detail="Rekening tidak ditemukan atau bukan milik akun Anda")
     
+    now_utc = datetime.now(timezone.utc)
     acc.status = "ARCHIVED"
+    acc.deleted_at = now_utc
+    
+    # Soft delete all transactions linked to this account
+    db.execute(
+        update(Transaction)
+        .where(
+            or_(Transaction.account_id == acc.id, Transaction.destination_account_id == acc.id),
+            Transaction.deleted_at.is_(None)
+        )
+        .values(deleted_at=now_utc, status="ARCHIVED")
+    )
+    
     db.commit()
-    return {"message": "Rekening berhasil dihapus"}
+    return {"message": "Rekening dan seluruh transaksi terkait berhasil dihapus (soft-delete)"}
 
 
 # =========================================================================
@@ -665,13 +736,19 @@ def get_transactions(current_user: User = Depends(get_current_user), db: Session
         return []
 
     txs = db.execute(
-        select(Transaction).where(Transaction.tenant_id.in_(tenant_ids)).order_by(desc(Transaction.transaction_date))
+        select(Transaction).where(
+            Transaction.tenant_id.in_(tenant_ids),
+            Transaction.deleted_at.is_(None)
+        ).order_by(desc(Transaction.transaction_date))
     ).scalars().all()
     
     results = []
     for t in txs:
-        acc = db.execute(select(Account).where(Account.id == t.account_id)).scalar_one_or_none()
-        dest_acc = db.execute(select(Account).where(Account.id == t.destination_account_id)).scalar_one_or_none() if t.destination_account_id else None
+        acc = db.execute(select(Account).where(Account.id == t.account_id, Account.status == "ACTIVE", Account.deleted_at.is_(None))).scalar_one_or_none()
+        if not acc:
+            # Hide transactions belonging to archived/deleted accounts
+            continue
+        dest_acc = db.execute(select(Account).where(Account.id == t.destination_account_id, Account.status == "ACTIVE", Account.deleted_at.is_(None))).scalar_one_or_none() if t.destination_account_id else None
         cat = db.execute(select(Category).where(Category.id == t.category_id)).scalar_one_or_none() if t.category_id else None
 
         results.append({
@@ -886,10 +963,11 @@ def delete_transaction(tx_id: str, current_user: User = Depends(get_current_user
             acc.current_balance += tx.amount
             dest_acc.current_balance -= tx.amount
 
-    db.delete(tx)
+    tx.status = "ARCHIVED"
+    tx.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {"message": "Transaksi berhasil dihapus dan saldo direvert"}
+    return {"message": "Transaksi berhasil dihapus (soft-delete) dan saldo direvert"}
 
 
 # =========================================================================

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-bri" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#004C8C"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="url(#bg-bri)"/>
+  <rect x="16" y="16" width="88" height="88" rx="20" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.15"/>
+  <circle cx="84" cy="40" r="8" fill="#F97316"/>
+  <text x="52" y="68" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="900" letter-spacing="1">BRI</text>
+  <rect x="30" y="78" width="60" height="4" rx="2" fill="white" fill-opacity="0.4"/>
+</svg>

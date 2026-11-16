@@ -3,17 +3,14 @@
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import { formatRupiah } from '$lib/utils/formatters';
+	import { WALLET_PRESETS, getWalletImage } from '$lib/utils/walletIcons';
 	import AccountCard from '$lib/components/financial/AccountCard.svelte';
-	import TransactionRow from '$lib/components/financial/TransactionRow.svelte';
 	import AddTransactionModal from '$lib/components/financial/AddTransactionModal.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import AmountInput from '$lib/components/ui/AmountInput.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import GlassSurface from '$lib/components/ui/GlassSurface.svelte';
-	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 	import type { Account, AccountType } from '$lib/types';
 	import {
 		Wallet,
@@ -21,17 +18,12 @@
 		ArrowLeftRight,
 		Building2,
 		Banknote,
-		CreditCard,
-		Coins,
-		ShieldCheck,
 		Smartphone,
-		Globe,
-		Shield,
-		ArrowUpRight,
-		TrendingUp,
 		Search,
 		Filter,
-		Trash2
+		Trash2,
+		AlertTriangle,
+		Image as ImageIcon
 	} from 'lucide-svelte';
 
 	let isTransferModalOpen = $state(false);
@@ -58,8 +50,54 @@
 		})
 	);
 
-	function handleDeleteAccount(account: Account) {
-		financialStore.deleteAccount(account.id);
+	// Delete Confirmation Modal State
+	let isDeleteConfirmOpen = $state(false);
+	let accountToDelete = $state<Account | null>(null);
+
+	function openDeleteModal(account: Account) {
+		accountToDelete = account;
+		isDeleteConfirmOpen = true;
+	}
+
+	async function confirmDeleteAccount() {
+		if (!accountToDelete) return;
+		await financialStore.deleteAccount(accountToDelete.id);
+		isDeleteConfirmOpen = false;
+		accountToDelete = null;
+	}
+
+	// Edit Account Modal State
+	let isEditAccountOpen = $state(false);
+	let accountToEdit = $state<Account | null>(null);
+	let editName = $state('');
+	let editAccountNumber = $state('');
+	let editIcon = $state('bca');
+	let editError = $state('');
+
+	function openEditModal(account: Account) {
+		accountToEdit = account;
+		editName = account.name;
+		editAccountNumber = account.account_number || '';
+		editIcon = account.icon || 'bca';
+		editError = '';
+		isEditAccountOpen = true;
+	}
+
+	async function handleSaveEditAccount() {
+		if (!accountToEdit) return;
+		if (!editName.trim()) {
+			editError = 'Nama rekening tidak boleh kosong.';
+			return;
+		}
+
+		await financialStore.updateAccount(accountToEdit.id, {
+			name: editName.trim(),
+			account_number: editAccountNumber.trim(),
+			icon: editIcon
+		});
+
+		isEditAccountOpen = false;
+		accountToEdit = null;
 	}
 
 	// Add Account Form
@@ -68,6 +106,7 @@
 	let institutionName = $state('');
 	let initialBalance = $state(0);
 	let accountNumber = $state('');
+	let selectedIcon = $state('bca');
 	let formError = $state('');
 
 	const accountTypeOptions = [
@@ -76,6 +115,14 @@
 		{ value: 'CASH', label: 'Uang Tunai (Cash)' },
 		{ value: 'INVESTMENT', label: 'Rekening Investasi (RDN/Crypto)' }
 	];
+
+	function onTypeChange(newType: AccountType) {
+		accountType = newType;
+		if (newType === 'BANK') selectedIcon = 'bca';
+		else if (newType === 'E_WALLET') selectedIcon = 'gopay';
+		else if (newType === 'CASH') selectedIcon = 'cash';
+		else if (newType === 'INVESTMENT') selectedIcon = 'crypto';
+	}
 
 	async function handleAddAccount() {
 		formError = '';
@@ -89,7 +136,8 @@
 			type: accountType,
 			opening_balance: initialBalance,
 			account_number: accountNumber.trim(),
-			institution_name: institutionName.trim()
+			institution_name: institutionName.trim(),
+			icon: selectedIcon
 		});
 
 		isAddAccountOpen = false;
@@ -97,6 +145,7 @@
 		institutionName = '';
 		initialBalance = 0;
 		accountNumber = '';
+		selectedIcon = 'bca';
 	}
 
 	// Calculate counts & balances
@@ -133,10 +182,10 @@
 		</p>
 	</div>
 
-	<!-- Top Metric Ribbon Strip (Segmented Accounts Overview - 2x2 on mobile, 4-col on desktop) -->
+	<!-- Top Metric Ribbon Strip -->
 	<div class="p-3 sm:p-5 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/80 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/70 dark:border-white/[0.06]">
 		<div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:divide-x divide-slate-100 dark:divide-white/5">
-			<!-- Col 1: Total Kekayaan (Net Worth) -->
+			<!-- Col 1: Total Saldo -->
 			<div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
 				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
 					<Wallet class="w-4 h-4 sm:w-5 sm:h-5" />
@@ -192,9 +241,9 @@
 		</div>
 	</div>
 
-	<!-- Unified Action Toolbar: Search (Max 40%), Filter Button & Action Buttons (Inline) -->
+	<!-- Unified Action Toolbar -->
 	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-		<!-- Search Field (Max 40% Width) -->
+		<!-- Search Field -->
 		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
 			<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 			<input
@@ -205,7 +254,7 @@
 			/>
 		</div>
 
-		<!-- Action Buttons: Filter, Transfer, Tambah Rekening (Aligned inline) -->
+		<!-- Action Buttons: Filter, Transfer, Tambah Rekening -->
 		<div class="flex items-center gap-2">
 			<!-- Filter Button with Popover -->
 			<div class="relative">
@@ -283,11 +332,16 @@
 
 	<!-- Accounts Cards Grid -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-		{#each filteredAccounts as account}
-			<AccountCard {account} ondelete={handleDeleteAccount} />
+		{#each filteredAccounts as account (account.id)}
+			<AccountCard
+				{account}
+				onedit={openEditModal}
+				ondelete={openDeleteModal}
+				ontransfer={() => (isTransferModalOpen = true)}
+			/>
 		{/each}
 
-		<!-- + Tambah Rekening Interactive Card (Responsive horizontal strip on mobile, vertical card on desktop) -->
+		<!-- + Tambah Rekening Interactive Card -->
 		<button
 			type="button"
 			onclick={() => (isAddAccountOpen = true)}
@@ -306,29 +360,64 @@
 	<!-- Transfer & Add Account Modals -->
 	<AddTransactionModal bind:open={isTransferModalOpen} />
 
-	<!-- Add Account Modal -->
+	<!-- Add Account Modal with Image Badge Picker -->
 	<Modal
 		bind:open={isAddAccountOpen}
 		title="Tambah Rekening / Dompet Baru"
 		description="Tambahkan sumber dana baru untuk dicatat di PantauDuit"
 	>
-		<div class="space-y-4">
+		<div class="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
 			<Input
 				bind:value={accountName}
-				label="Nama Rekening / Dompet"
-				placeholder="Contoh: BCA Utama, GoPay, Dompet Saku"
+				label="Nama Rekening / Dompet *"
+				placeholder="Contoh: BCA Utama, GoPay, Dompet Harian"
 			/>
 
-			<Select
-				bind:value={accountType}
-				options={accountTypeOptions}
-				label="Tipe Akun"
-			/>
+			<div>
+				<label for="account-type-select" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+					Tipe Akun *
+				</label>
+				<select
+					id="account-type-select"
+					value={accountType}
+					onchange={(e) => onTypeChange((e.target as HTMLSelectElement).value as AccountType)}
+					class="w-full h-10 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
+				>
+					{#each accountTypeOptions as opt}
+						<option value={opt.value}>{opt.label}</option>
+					{/each}
+				</select>
+			</div>
+
+			<!-- Visual Image / Badge Selection -->
+			<div>
+				<div class="flex items-center justify-between mb-2">
+					<span class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+						Pilih Gambar & Ciri Khas Dompet
+					</span>
+					<span class="text-[10px] text-slate-400">Pilih logo/ikon dompet</span>
+				</div>
+				<div class="grid grid-cols-4 sm:grid-cols-7 gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] max-h-48 overflow-y-auto">
+					{#each WALLET_PRESETS as preset}
+						<button
+							type="button"
+							onclick={() => (selectedIcon = preset.id)}
+							class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {selectedIcon === preset.id ? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm' : 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"
+							title={preset.name}
+						>
+							<img src={preset.image} alt={preset.name} class="w-8 h-8 rounded-lg object-contain shadow-xs" />
+							<span class="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate w-full text-center">
+								{preset.name.replace('Bank ', '')}
+							</span>
+						</button>
+					{/each}
+				</div>
+			</div>
 
 			<Input
 				bind:value={institutionName}
 				label="Nama Institusi / Bank (Opsional)"
-				placeholder="Contoh: Bank Central Asia, GoTo, Bank Jago"
+				placeholder="Contoh: Bank Central Asia, GoTo, Bank Mandiri"
 			/>
 
 			<Input
@@ -343,6 +432,10 @@
 				showPercentageChips={false}
 			/>
 
+			<div class="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-500/5 border border-blue-200/50 dark:border-blue-500/20 text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+				💡 <strong>Otomatis Tercatat</strong>: Nilai saldo awal di atas akan otomatis dicatat sebagai transaksi pemasukan pertama Anda di modul Riwayat Transaksi dan Dashboard.
+			</div>
+
 			{#if formError}
 				<p class="text-xs font-semibold text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200">
 					{formError}
@@ -353,6 +446,96 @@
 		{#snippet footer()}
 			<Button variant="ghost" onclick={() => (isAddAccountOpen = false)}>Batal</Button>
 			<Button variant="primary" onclick={handleAddAccount}>Simpan Rekening</Button>
+		{/snippet}
+	</Modal>
+
+	<!-- Edit Account Modal (Change Image & Details) -->
+	<Modal
+		bind:open={isEditAccountOpen}
+		title="Ubah Rekening / Gambar Dompet"
+		description="Sesuaikan nama, logo gambar, dan detail dompet Anda"
+	>
+		<div class="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+			<Input
+				bind:value={editName}
+				label="Nama Rekening / Dompet *"
+				placeholder="Contoh: BCA Utama, Dompet Belanja"
+			/>
+
+			<!-- Visual Image / Badge Selection for Edit -->
+			<div>
+				<div class="flex items-center justify-between mb-2">
+					<span class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+						Ganti Gambar & Ciri Khas Dompet
+					</span>
+					<span class="text-[10px] text-slate-400">Pilih logo/ikon dompet</span>
+				</div>
+				<div class="grid grid-cols-4 sm:grid-cols-7 gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] max-h-48 overflow-y-auto">
+					{#each WALLET_PRESETS as preset}
+						<button
+							type="button"
+							onclick={() => (editIcon = preset.id)}
+							class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {editIcon === preset.id ? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm' : 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"
+							title={preset.name}
+						>
+							<img src={preset.image} alt={preset.name} class="w-8 h-8 rounded-lg object-contain shadow-xs" />
+							<span class="text-[9px] font-semibold text-slate-600 dark:text-slate-400 truncate w-full text-center">
+								{preset.name.replace('Bank ', '')}
+							</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<Input
+				bind:value={editAccountNumber}
+				label="Nomor Rekening / HP (Opsional)"
+				placeholder="Contoh: 1234567890"
+			/>
+
+			{#if editError}
+				<p class="text-xs font-semibold text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200">
+					{editError}
+				</p>
+			{/if}
+		</div>
+
+		{#snippet footer()}
+			<Button variant="ghost" onclick={() => (isEditAccountOpen = false)}>Batal</Button>
+			<Button variant="primary" onclick={handleSaveEditAccount}>Simpan Perubahan</Button>
+		{/snippet}
+	</Modal>
+
+	<!-- Delete Account Confirmation Modal (Soft Delete Safe Confirmation) -->
+	<Modal
+		bind:open={isDeleteConfirmOpen}
+		title="Hapus Rekening / Dompet"
+		description="Konfirmasi penghapusan rekening dan transaksi terkait"
+	>
+		<div class="space-y-3">
+			<div class="flex items-start gap-3 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/40">
+				<AlertTriangle class="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+				<div class="text-xs space-y-1.5 text-slate-700 dark:text-slate-300">
+					<p>
+						Apakah Anda yakin ingin menghapus rekening <strong class="text-slate-900 dark:text-white font-semibold">{accountToDelete?.name}</strong>?
+					</p>
+					<p class="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+						Semua riwayat transaksi di rekening ini juga akan otomatis disembunyikan dari dashboard dan laporan. Sistem menggunakan <strong>soft delete</strong> sehingga data tetap aman dan tersimpan di database untuk keperluan pemulihan (rollback).
+					</p>
+				</div>
+			</div>
+		</div>
+
+		{#snippet footer()}
+			<Button variant="ghost" onclick={() => (isDeleteConfirmOpen = false)}>Batal</Button>
+			<button
+				type="button"
+				onclick={confirmDeleteAccount}
+				class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+			>
+				<Trash2 class="w-3.5 h-3.5" />
+				<span>Ya, Hapus Rekening</span>
+			</button>
 		{/snippet}
 	</Modal>
 </div>

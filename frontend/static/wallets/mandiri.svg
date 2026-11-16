@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-mandiri" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00204E"/>
+      <stop offset="100%" stop-color="#0D47A1"/>
+    </linearGradient>
+    <linearGradient id="gold-wave" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FDE047"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="url(#bg-mandiri)"/>
+  <rect x="16" y="16" width="88" height="88" rx="20" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.15"/>
+  <!-- Gold Waves Signature -->
+  <path d="M28 68 C 45 42, 75 42, 92 68 C 85 75, 75 70, 60 58 C 45 70, 35 75, 28 68 Z" fill="url(#gold-wave)"/>
+  <text x="60" y="42" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="800" letter-spacing="1.5">MANDIRI</text>
+</svg>

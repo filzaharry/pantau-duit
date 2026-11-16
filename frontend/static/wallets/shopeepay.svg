@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-shopee" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D03010"/>
+      <stop offset="100%" stop-color="#EE4D2D"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="url(#bg-shopee)"/>
+  <rect x="16" y="16" width="88" height="88" rx="20" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.2"/>
+  <!-- Shopping Bag / Wallet -->
+  <g transform="translate(60, 46)">
+    <path d="M-10 -6 Q 0 -18, 10 -6" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+    <rect x="-18" y="-6" width="36" height="34" rx="7" fill="white" fill-opacity="0.95"/>
+    <path d="M-8 6 Q 0 16, 8 6" fill="none" stroke="#EE4D2D" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="60" y="96" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" letter-spacing="0.5">ShopeePay</text>
+</svg>

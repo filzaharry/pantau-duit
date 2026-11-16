@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="bg-piggy" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#BE185D"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="url(#bg-piggy)"/>
+  <rect x="16" y="16" width="88" height="88" rx="20" fill="none" stroke="white" stroke-width="1.5" stroke-opacity="0.2"/>
+  <!-- Piggy Bank Illustration -->
+  <g transform="translate(60, 50)">
+    <!-- Coin dropping -->
+    <circle cx="0" cy="-22" r="6" fill="#FDE047" stroke="#D97706" stroke-width="1.5"/>
+    <!-- Body -->
+    <ellipse cx="-2" cy="4" rx="26" ry="20" fill="white" fill-opacity="0.95"/>
+    <!-- Coin slot -->
+    <rect x="-6" y="-15" width="10" height="2.5" rx="1" fill="#BE185D"/>
+    <!-- Snout -->
+    <rect x="18" y="0" width="10" height="10" rx="4" fill="#F472B6"/>
+    <!-- Eye -->
+    <circle cx="14" cy="-3" r="2.5" fill="#831843"/>
+    <!-- Ear -->
+    <polygon points="-8,-14 2,-20 0,-12" fill="#F472B6"/>
+    <!-- Legs -->
+    <rect x="-16" y="18" width="6" height="8" rx="2" fill="#F472B6"/>
+    <rect x="6" y="18" width="6" height="8" rx="2" fill="#F472B6"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" letter-spacing="1">CELENGAN</text>
+</svg>

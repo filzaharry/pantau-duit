@@ -717,7 +717,7 @@ class FinancialStore {
 		}
 	}
 
-	async addAccount(payload: { name: string; type: string; opening_balance?: number; account_number?: string; institution_name?: string }) {
+	async addAccount(payload: { name: string; type: string; opening_balance?: number; account_number?: string; institution_name?: string; icon?: string; color?: string }) {
 		try {
 			const res = await apiFetch<any>('/accounts', {
 				method: 'POST',
@@ -725,7 +725,10 @@ class FinancialStore {
 					name: payload.name,
 					type: payload.type,
 					opening_balance: payload.opening_balance || 0,
-					account_number: payload.account_number || ''
+					account_number: payload.account_number || '',
+					institution_name: payload.institution_name || '',
+					icon: payload.icon || 'wallet',
+					color: payload.color || '#007AFF'
 				})
 			});
 			if (res.data) {
@@ -741,16 +744,36 @@ class FinancialStore {
 		}
 	}
 
+	async updateAccount(id: string, payload: { name: string; type?: string; account_number?: string; icon?: string; color?: string }) {
+		try {
+			const res = await apiFetch<any>(`/accounts/${id}`, {
+				method: 'PUT',
+				body: JSON.stringify(payload)
+			});
+			if (res.data || res.status === 200) {
+				await this.loadFromDatabase();
+				notificationStore.showToast('Rekening berhasil diperbarui!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal memperbarui rekening');
+		} catch (err: any) {
+			console.error('API update account failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal memperbarui rekening ke database', 'error');
+			return null;
+		}
+	}
+
 	async deleteAccount(id: string) {
 		try {
 			await apiFetch(`/accounts/${id}`, { method: 'DELETE' });
 			await this.loadFromDatabase();
-			notificationStore.showToast('Rekening berhasil dihapus dari database', 'info');
+			notificationStore.showToast('Rekening dan transaksi terkait berhasil dihapus', 'info');
 			return;
 		} catch (err) {
 			console.warn('API delete account failed:', err);
 		}
 		this.accounts = this.accounts.filter((a) => a.id !== id);
+		this.transactions = this.transactions.filter((t) => t.account_id !== id && t.destination_account_id !== id);
 		notificationStore.showToast('Rekening berhasil dihapus', 'info');
 	}
 
