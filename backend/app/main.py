@@ -5,7 +5,9 @@ from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
 from typing import List, Optional, Any
 import jwt
-from fastapi import FastAPI, Depends, HTTPException, status
+import json
+import urllib.request
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -22,6 +24,8 @@ from app.models.billing import Subscription, Plan
 from app.models.financial import Account, Category, Transaction, Budget, FinancialGoal, GoalContribution
 from app.models.investment import InvestmentHolding, InvestmentAsset
 from app.models.company import Employee, AttendanceRecord, PayrollRun, Department
+from app.models.telegram import TelegramAccount, TelegramChat, TelegramBot
+from app.services.telegram_bot import handle_telegram_update, send_telegram_message
 
 app = FastAPI(
     title="PantauDuit API",
@@ -144,6 +148,22 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    if not credentials or not credentials.credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, settings.SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return db.execute(select(User).where(User.id == uuid.UUID(user_id))).scalar_one_or_none()
+    except Exception:
+        return None
 
 
 # =========================================================================
@@ -353,6 +373,84 @@ def health_check(db: Session = Depends(get_db)):
         "database": "connected",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# =========================================================================
+# Telegram Webhook & Bot Integration Endpoints
+# =========================================================================
+@app.post("/api/telegram/webhook")
+async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
+    """Public webhook receiver for Telegram Bot updates."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": True, "status": "invalid_json"}
+
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    if not bot_token or bot_token.endswith("PLACEHOLDER"):
+        return {"ok": True, "status": "bot_token_not_configured"}
+
+    try:
+        result = handle_telegram_update(body, db, bot_token)
+        return {"ok": True, "result": result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": True, "error": str(e)}
+
+
+@app.get("/api/telegram/status")
+def get_telegram_status(
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Return status of bot connection for the currently authenticated user."""
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    bot_username = "pd_exavolt_bot"
+
+    linked_account = None
+    if current_user:
+        tg_acc = db.execute(
+            select(TelegramAccount).where(TelegramAccount.user_id == current_user.id)
+        ).scalar_one_or_none()
+        if tg_acc:
+            linked_account = {
+                "telegram_user_id": tg_acc.telegram_user_id,
+                "telegram_username": tg_acc.telegram_username,
+                "first_name": tg_acc.first_name,
+                "last_name": tg_acc.last_name,
+                "auth_date": tg_acc.auth_date.isoformat() if tg_acc.auth_date else None
+            }
+
+    return {
+        "bot_username": bot_username,
+        "bot_url": f"https://t.me/{bot_username}",
+        "is_configured": bool(bot_token and not bot_token.endswith("PLACEHOLDER")),
+        "is_linked": bool(linked_account is not None),
+        "linked_account": linked_account,
+        "pairing_code": "PD-994812",
+        "pairing_email": current_user.email if current_user else "admin@pantauduit.id"
+    }
+
+
+@app.post("/api/telegram/set-webhook")
+def set_telegram_webhook(current_user: User = Depends(get_current_user)):
+    """Register the production webhook URL directly with Telegram Bot API."""
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    if not bot_token or bot_token.endswith("PLACEHOLDER"):
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN belum dikonfigurasi di file .env")
+
+    webhook_url = "https://pantau-duit.exavolt.net/api/telegram/webhook"
+    api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook?url={webhook_url}"
+
+    try:
+        req = urllib.request.Request(api_url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return {"status": "success", "telegram_response": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mendaftarkan webhook ke Telegram: {str(e)}")
+
 
 
 # =========================================================================

@@ -138,7 +138,7 @@
 			</div>
 			<div>
 				<h4 class="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white leading-none">
-					@PantauDuitBot Simulator
+					@pd_exavolt_bot Simulator
 				</h4>
 				<span class="text-[10px] text-emerald-500 font-semibold flex items-center gap-1 mt-0.5">
 					<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>

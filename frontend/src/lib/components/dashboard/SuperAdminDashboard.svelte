@@ -180,7 +180,7 @@
 				<div class="min-w-0 flex-1">
 					<span class="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-400 font-semibold truncate block">Status Bot Telegram</span>
 					<span class="text-xs sm:text-base font-semibold text-emerald-600 dark:text-emerald-400 truncate block">Online (42ms)</span>
-					<span class="text-[10px] sm:text-[11px] text-slate-400 truncate block">Webhook @PantauDuitBot Aktif</span>
+					<span class="text-[10px] sm:text-[11px] text-slate-400 truncate block">Webhook @pd_exavolt_bot Aktif</span>
 				</div>
 			</div>
 		</div>

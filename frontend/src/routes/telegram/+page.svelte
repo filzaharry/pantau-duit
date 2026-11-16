@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { authStore } from '$lib/stores/auth.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import TelegramSimulator from '$lib/components/telegram/TelegramSimulator.svelte';
 	import GlassSurface from '$lib/components/ui/GlassSurface.svelte';
@@ -18,10 +19,14 @@
 	let isCopied = $state(false);
 	const pairingCode = 'PD-994812';
 
-	function copyCode() {
-		navigator.clipboard.writeText(pairingCode);
+	let userEmail = $derived(authStore.user?.email || 'admin@pantauduit.id');
+	let pairCommand = $derived(`/pair ${userEmail}`);
+	let telegramDirectLink = $derived(`https://t.me/pd_exavolt_bot?start=${encodeURIComponent(userEmail)}`);
+
+	function copyCommand() {
+		navigator.clipboard.writeText(pairCommand);
 		isCopied = true;
-		notificationStore.toast('Kode pairing disalin ke clipboard!', 'success');
+		notificationStore.toast('Perintah pairing disalin ke clipboard!', 'success');
 		setTimeout(() => (isCopied = false), 2000);
 	}
 </script>
@@ -42,7 +47,7 @@
 		<!-- Status Badge -->
 		<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold self-start sm:self-auto">
 			<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-			<span>Status: Terhubung & Aktif</span>
+			<span>Status: Webhook Aktif & Siap</span>
 		</div>
 	</div>
 
@@ -56,23 +61,23 @@
 				<div>
 					<div class="flex items-center gap-2">
 						<h2 class="text-base font-semibold text-slate-900 dark:text-white">
-							@PantauDuitBot
+							@pd_exavolt_bot
 						</h2>
 						<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#007AFF]/10 text-[#007AFF]">
 							Official Bot
 						</span>
 					</div>
 					<p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-						Akun Telegram: <strong>@alex_finance</strong> &bull; ID: <code>198273641</code>
+						Terhubung dengan akun: <strong>{userEmail}</strong> &bull; Workspace: <code>{authStore.workspace?.name || 'Personal'}</code>
 					</p>
 				</div>
 			</div>
 
 			<a
-				href="https://t.me/PantauDuitBot"
+				href={telegramDirectLink}
 				target="_blank"
 				rel="noreferrer"
-				class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0088cc] hover:bg-[#0077b5] text-white text-xs font-semibold transition-all self-start sm:self-auto"
+				class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0088cc] hover:bg-[#0077b5] text-white text-xs font-semibold transition-all self-start sm:self-auto shadow-md shadow-[#0088cc]/20"
 			>
 				<span>Buka di Telegram</span>
 				<ExternalLink class="w-3.5 h-3.5" />
@@ -81,18 +86,19 @@
 
 		<!-- Pairing Code Banner -->
 		<div class="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-			<div>
-				<span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Token Pairing Akun Baru</span>
-				<div class="flex items-center gap-3 mt-1">
-					<span class="text-lg font-mono font-semibold text-slate-900 dark:text-white tracking-widest">
-						{pairingCode}
-					</span>
+			<div class="space-y-1">
+				<span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Perintah Pairing Cepat (Kirim ke @pd_exavolt_bot)</span>
+				<div class="flex items-center gap-3">
+					<code class="text-sm sm:text-base font-mono font-semibold text-[#007AFF] dark:text-[#0A84FF] px-2 py-1 bg-blue-500/10 rounded-lg">
+						{pairCommand}
+					</code>
+					<span class="text-xs text-slate-400">atau token: <strong class="font-mono text-slate-700 dark:text-slate-300">{pairingCode}</strong></span>
 				</div>
 			</div>
 
-			<Button variant="outline" onclick={copyCode}>
+			<Button variant="outline" onclick={copyCommand}>
 				<Copy class="w-3.5 h-3.5" />
-				<span>{isCopied ? 'Tersalin!' : 'Salin Kode'}</span>
+				<span>{isCopied ? 'Tersalin!' : 'Salin Perintah'}</span>
 			</Button>
 		</div>
 	</div>
