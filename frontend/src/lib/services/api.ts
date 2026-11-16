@@ -2,7 +2,11 @@
  * Centralized API service with transparent backend proxy and offline/demo fallback
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const defaultBase = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+	? '/api'
+	: 'http://localhost:8000/api';
+
+const API_BASE = (import.meta.env.VITE_API_URL || defaultBase).replace(/\/$/, '');
 
 export interface ApiResponse<T> {
 	data?: T;
@@ -21,7 +25,8 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
 	}
 
 	try {
-		const res = await fetch(`${API_BASE}${endpoint}`, {
+		const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+		const res = await fetch(`${API_BASE}${normalizedEndpoint}`, {
 			...options,
 			headers
 		});
