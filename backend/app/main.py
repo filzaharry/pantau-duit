@@ -7,7 +7,9 @@ from typing import List, Optional, Any
 import jwt
 import json
 import urllib.request
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -26,12 +28,22 @@ from app.models.investment import InvestmentHolding, InvestmentAsset
 from app.models.company import Employee, AttendanceRecord, PayrollRun, Department
 from app.models.telegram import TelegramAccount, TelegramChat, TelegramBot
 from app.services.telegram_bot import handle_telegram_update, send_telegram_message
+from app.services.receipt_ocr import receipt_ocr_service
+
+# Upload directories for receipts and attachments
+UPLOADS_DIR = Path("/vol/pantau-duit/backend/uploads") if os.path.exists("/vol/pantau-duit/backend/uploads") else Path("uploads")
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+RECEIPTS_DIR = UPLOADS_DIR / "receipts"
+RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="PantauDuit API",
     description="Backend REST API terhubung langsung ke PostgreSQL Database dengan JWT Authentication",
     version="2.0.0"
 )
+
+# Mount static uploads
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Enable CORS for frontend SvelteKit dev server
 app.add_middleware(
@@ -450,6 +462,30 @@ def set_telegram_webhook(current_user: User = Depends(get_current_user)):
             return {"status": "success", "telegram_response": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal mendaftarkan webhook ke Telegram: {str(e)}")
+
+
+@app.post("/api/ocr/receipt")
+async def ocr_receipt_endpoint(file: UploadFile = File(...)):
+    """
+    Reusable OCR Receipt Scanner endpoint.
+    Accepts image file (JPEG, PNG, WebP), runs local Tesseract OCR,
+    and returns parsed receipt data (Merchant, Total, Date, Category, etc.).
+    Can be used by Web Dashboard, Mobile App, Reimbursement module, etc.
+    """
+    content_type = file.content_type or ""
+    if not (content_type.startswith("image/") or file.filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))):
+        raise HTTPException(status_code=400, detail="File harus berupa gambar (JPEG, PNG, WebP)")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="File gambar kosong")
+
+    result = receipt_ocr_service.process_receipt(
+        contents,
+        save_dir=RECEIPTS_DIR,
+        base_url="https://pantau-duit.exavolt.net/uploads/receipts"
+    )
+    return result
 
 
 

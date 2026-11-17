@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import re
@@ -5,6 +6,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 
 from sqlalchemy import select, desc
@@ -15,6 +17,7 @@ from app.models.tenant import Tenant, TenantUser
 from app.models.financial import Account, Category, Transaction
 from app.models.telegram import TelegramAccount, TelegramChat, TelegramMessage
 from app.core.security import verify_password
+from app.services.receipt_ocr import receipt_ocr_service
 
 logger = logging.getLogger("telegram_bot")
 
@@ -56,6 +59,33 @@ def format_rupiah(amount: Decimal | float | int) -> str:
     """Format number to Indonesian Rupiah string without decimal if whole."""
     val = float(amount)
     return f"Rp {val:,.0f}".replace(",", ".")
+
+
+def download_telegram_file(bot_token: str, file_id: str) -> Optional[bytes]:
+    """Download a file (photo or document) from Telegram using Bot API."""
+    if not bot_token or not file_id:
+        return None
+
+    try:
+        url_info = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        req = urllib.request.Request(url_info)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if not data.get("ok"):
+                logger.error(f"Telegram getFile returned not ok: {data}")
+                return None
+            file_path = data.get("result", {}).get("file_path")
+            if not file_path:
+                return None
+
+        # Download raw bytes
+        url_file = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        req_file = urllib.request.Request(url_file)
+        with urllib.request.urlopen(req_file, timeout=20) as resp_file:
+            return resp_file.read()
+    except Exception as e:
+        logger.error(f"Failed to download Telegram file {file_id}: {e}")
+        return None
 
 
 def parse_financial_input(
@@ -379,9 +409,22 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
     from_user = message.get("from", {})
     chat_id = chat.get("id")
     tg_user_id = from_user.get("id")
-    raw_text = (message.get("text") or "").strip()
 
-    if not chat_id or not tg_user_id or not raw_text:
+    # Check for photo or document image
+    photos = message.get("photo")
+    doc = message.get("document")
+    is_image = False
+    file_id = None
+    if photos and isinstance(photos, list):
+        is_image = True
+        file_id = photos[-1].get("file_id")
+    elif doc and (doc.get("mime_type") or "").startswith("image/"):
+        is_image = True
+        file_id = doc.get("file_id")
+
+    raw_text = (message.get("text") or message.get("caption") or "").strip()
+
+    if not chat_id or not tg_user_id or (not raw_text and not is_image):
         return {"status": "ignored_incomplete_data"}
 
     first_name = from_user.get("first_name") or ""
@@ -751,6 +794,121 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
             Category.tenant_id.in_([tenant_id, None])
         )
     ).scalars().all()
+
+    # -------------------------------------------------------------------------
+    # PHOTO RECEIPT OCR SCANNING (Local Tesseract Engine)
+    # -------------------------------------------------------------------------
+    if is_image and file_id:
+        img_bytes = download_telegram_file(bot_token, file_id)
+        if not img_bytes:
+            send_telegram_message(
+                bot_token, chat_id,
+                "⚠️ Gagal mengunduh foto struk dari Telegram. Silakan coba kirim ulang."
+            )
+            return {"status": "failed_download_photo"}
+
+        # Define receipt upload directory
+        base_uploads = Path("/vol/pantau-duit/backend/uploads") if os.path.exists("/vol/pantau-duit/backend/uploads") else Path("uploads")
+        receipts_save_dir = base_uploads / "receipts"
+        receipts_save_dir.mkdir(parents=True, exist_ok=True)
+
+        ocr_result = receipt_ocr_service.process_receipt(
+            img_bytes,
+            save_dir=receipts_save_dir,
+            base_url="https://pantau-duit.exavolt.net/uploads/receipts"
+        )
+
+        total_amount = ocr_result.get("total_amount")
+        target_account = accounts[0]
+
+        if total_amount and total_amount > 0:
+            merchant_name = ocr_result.get("merchant_name") or "Struk Belanja"
+            cat_hint = ocr_result.get("category_hint") or "Shopping"
+            target_category = None
+            for c in categories:
+                if cat_hint.lower() in c.name.lower() or c.name.lower() in cat_hint.lower():
+                    target_category = c
+                    break
+            if not target_category:
+                filtered = [c for c in categories if c.type in ("EXPENSE", "BOTH")]
+                target_category = filtered[0] if filtered else (categories[0] if categories else None)
+
+            target_account.current_balance -= total_amount
+            tx_date = ocr_result.get("transaction_date") or datetime.now(timezone.utc)
+
+            new_tx = Transaction(
+                tenant_id=tenant_id,
+                account_id=target_account.id,
+                category_id=target_category.id if target_category else None,
+                amount=total_amount,
+                transaction_type="EXPENSE",
+                transaction_date=tx_date,
+                source="TELEGRAM",
+                status="COMPLETED",
+                description=merchant_name,
+                receipt_url=ocr_result.get("receipt_url"),
+                notes=f"Struk dipindai otomatis via Telegram OCR (@{tg_username or tg_user_id}): {merchant_name}",
+                metadata_json={
+                    "telegram_chat_id": chat_id,
+                    "telegram_user_id": tg_user_id,
+                    "telegram_username": tg_username,
+                    "ocr_engine": "tesseract_local",
+                    "merchant": merchant_name,
+                    "receipt_url": ocr_result.get("receipt_url"),
+                    "raw_ocr_preview": (ocr_result.get("raw_text") or "")[:200]
+                },
+                created_by=user.id
+            )
+            db.add(new_tx)
+
+            tg_chat = db.execute(
+                select(TelegramChat).where(
+                    TelegramChat.telegram_account_id == tg_account.id,
+                    TelegramChat.chat_id == chat_id
+                )
+            ).scalar_one_or_none()
+            if tg_chat:
+                tg_chat.last_active_at = datetime.now(timezone.utc)
+                msg_record = TelegramMessage(
+                    telegram_chat_id=tg_chat.id,
+                    telegram_message_id=message.get("message_id", 0),
+                    direction="INCOMING",
+                    raw_text=raw_text or "[FOTO STRUK]",
+                    parsed_intent="RECORD_EXPENSE_OCR",
+                    status="PROCESSED"
+                )
+                db.add(msg_record)
+
+            db.commit()
+
+            nominal_formatted = format_rupiah(total_amount)
+            new_bal_formatted = format_rupiah(target_account.current_balance)
+            date_formatted = tx_date.strftime("%d/%m/%Y")
+            cat_name = target_category.name if target_category else "Shopping"
+
+            reply_text = (
+                f"🧾 <b>Struk Belanja Berhasil Dipindai!</b> (OCR Lokal)\n\n"
+                f"🏪 Toko/Merchant: <b>{merchant_name}</b>\n"
+                f"📅 Tanggal: <b>{date_formatted}</b>\n"
+                f"💸 Total Belanja: <b>{nominal_formatted}</b> (Pengeluaran 🔴)\n"
+                f"🏷️ Kategori: <b>{cat_name}</b>\n"
+                f"💳 Dompet: <b>{target_account.name}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Sisa Saldo <b>{target_account.name}</b>: <b>{new_bal_formatted}</b>\n\n"
+                f"📎 <i>Foto struk tersimpan aman di transaksi web!</i>"
+            )
+            send_telegram_message(bot_token, chat_id, reply_text)
+            return {"status": "receipt_recorded", "tx_id": str(new_tx.id), "amount": float(total_amount)}
+        else:
+            raw_preview = (ocr_result.get("raw_text") or "").strip()[:150]
+            preview_msg = f"\n\n<i>Teks terbaca sebagian:</i>\n<code>{raw_preview}...</code>" if raw_preview else ""
+            reply_text = (
+                f"📸 <b>Foto Struk Diterima!</b>{preview_msg}\n\n"
+                f"⚠️ Nominal total belum terdeteksi otomatis.\n"
+                f"💡 <b>Tips:</b> Silakan balas pesan ini dengan mengetik nominalnya, misalnya: <code>{ocr_result.get('merchant_name', 'struk')} 45rb</code>"
+            )
+            send_telegram_message(bot_token, chat_id, reply_text)
+            return {"status": "receipt_unclear_total"}
 
     parsed = parse_financial_input(raw_text, categories, accounts)
 
