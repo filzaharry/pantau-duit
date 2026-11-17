@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union, Tuple
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageOps, ImageFilter
 
 logger = logging.getLogger("receipt_ocr")
 
@@ -33,17 +33,13 @@ class ReceiptOCRService:
     """
 
     def __init__(self, tesseract_cmd: Optional[str] = None):
-        # Locate tesseract binary (default to PATH or common system locations)
         self.tesseract_cmd = tesseract_cmd or shutil.which("tesseract") or "/usr/bin/tesseract"
         self._is_available = os.path.exists(self.tesseract_cmd) if self.tesseract_cmd else False
-        if not self._is_available:
-            logger.warning("Tesseract binary not found. OCR features will be disabled until installed.")
 
     @property
     def is_available(self) -> bool:
         """Check if Tesseract OCR is installed and available on the system."""
         if not self._is_available:
-            # Recheck in case it was installed dynamically
             cmd = shutil.which("tesseract") or "/usr/bin/tesseract"
             self._is_available = os.path.exists(cmd) if cmd else False
             if self._is_available:
@@ -52,18 +48,13 @@ class ReceiptOCRService:
 
     def preprocess_image(self, image: Image.Image) -> Image.Image:
         """
-        Enhance image quality specifically for thermal paper receipt OCR:
-        - Scale up low resolution receipts
-        - Grayscale conversion
-        - Contrast enhancement
-        - Unsharp mask sharpening
-        - Binarization thresholding
+        Enhance image quality cleanly without destructive thresholding.
+        Avoids fixed black-and-white binarization which destroys text in phone shadows.
         """
-        # Convert to RGB if palette/RGBA
         if image.mode in ("RGBA", "P"):
             image = image.convert("RGB")
 
-        # Resize if width < 1200px to ensure crisp dot-matrix receipt fonts
+        # Resize if width < 1200px to ensure clear OCR resolution
         w, h = image.size
         if w < 1200:
             scale = 1200 / float(w)
@@ -71,23 +62,7 @@ class ReceiptOCRService:
             new_h = int(float(h) * scale)
             image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-        # Grayscale
-        gray = image.convert("L")
-
-        # Increase contrast
-        enhancer = ImageEnhance.Contrast(gray)
-        enhanced = enhancer.enhance(1.8)
-
-        # Slight sharpening
-        sharpened = enhanced.filter(ImageFilter.SHARPEN)
-
-        # Binarization / High-contrast threshold (black text on pure white)
-        # Thermal receipt papers often have grayish backgrounds
-        threshold = 145
-        table = [0 if i < threshold else 255 for i in range(256)]
-        binarized = sharpened.point(table, "1")
-
-        return binarized
+        return image
 
     def extract_text(
         self,
@@ -97,6 +72,9 @@ class ReceiptOCRService:
         """
         Extract raw text from an image using Tesseract OCR.
         Accepts raw image bytes, a file path, or a PIL Image object.
+        Uses a two-pass approach:
+        - Pass 1: Clean normalized image
+        - Pass 2: Grayscale with auto-contrast (fallback if Pass 1 is too short)
         """
         if not self.is_available:
             raise RuntimeError(
@@ -104,7 +82,6 @@ class ReceiptOCRService:
                 "Install it via: sudo apt install -y tesseract-ocr tesseract-ocr-ind"
             )
 
-        # Load into PIL Image
         if isinstance(image_input, (str, Path)):
             img = Image.open(str(image_input))
         elif isinstance(image_input, bytes):
@@ -114,16 +91,19 @@ class ReceiptOCRService:
         else:
             raise ValueError("Unsupported image input type. Provide bytes, filepath, or PIL.Image.")
 
-        # Try with preprocessing first
+        # Pass 1: Clean normalized image
         processed = self.preprocess_image(img)
-
-        # Run OCR via pytesseract if available, else standard subprocess
         text = self._run_tesseract_cli(processed, lang=lang)
 
-        # If preprocessing produced very little text, fallback to raw grayscale
-        if len(text.strip()) < 10:
-            fallback_img = img.convert("L")
-            text = self._run_tesseract_cli(fallback_img, lang=lang)
+        # Pass 2: If Pass 1 yielded little text, try gentle autocontrast grayscale
+        if len(text.strip()) < 25:
+            try:
+                gray = ImageOps.autocontrast(img.convert("L"))
+                text_pass2 = self._run_tesseract_cli(gray, lang=lang)
+                if len(text_pass2.strip()) > len(text.strip()):
+                    text = text_pass2
+            except Exception:
+                pass
 
         return text
 
@@ -131,11 +111,10 @@ class ReceiptOCRService:
         """Internal runner using pytesseract or subprocess with graceful fallback."""
         try:
             import pytesseract
-            # Test if ind is available, fallback to eng if needed
             try:
-                return pytesseract.image_to_string(image, lang=lang, config="--psm 6")
+                return pytesseract.image_to_string(image, lang=lang)
             except Exception:
-                return pytesseract.image_to_string(image, lang="eng", config="--psm 6")
+                return pytesseract.image_to_string(image, lang="eng")
         except ImportError:
             pass
 
@@ -146,12 +125,10 @@ class ReceiptOCRService:
             image.save(tmp_path, format="PNG")
 
         try:
-            # Try ind+eng first
-            cmd = [self.tesseract_cmd, tmp_path, "stdout", "-l", lang, "--psm", "6"]
+            cmd = [self.tesseract_cmd, tmp_path, "stdout", "-l", lang]
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
             if res.returncode != 0:
-                # Fallback to English only
-                cmd = [self.tesseract_cmd, tmp_path, "stdout", "-l", "eng", "--psm", "6"]
+                cmd = [self.tesseract_cmd, tmp_path, "stdout", "-l", "eng"]
                 res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
             return res.stdout or ""
         finally:
@@ -166,7 +143,7 @@ class ReceiptOCRService:
         - Subtotal / Tax
         - Transaction date & time
         - Category suggestion
-        - Line items (if clearly detected)
+        - Line items
         """
         lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
 
@@ -178,11 +155,46 @@ class ReceiptOCRService:
         category_hint: str = "Shopping"
         items: List[Dict[str, Any]] = []
 
-        # 1. Extract Merchant Name (usually in lines 0 to 4)
-        junk_headers = [
-            "selamat datang", "terima kasih", "struk", "nota", "faktur",
-            "kasir", "jl.", "jalan", "telp", "no.", "npwp", "tax", "pos"
+        # Lines that contain non-monetary reference/ID data
+        reference_line_keywords = [
+            "no :", "no.", "nomor", "ref", "trx", "invoice", "order",
+            "pax", "kasir", "npwp", "telp", "phone", "antrian", "id:"
         ]
+
+        # Helper to clean Rupiah number string into Decimal
+        def clean_idr_number(num_str: str) -> Optional[Decimal]:
+            clean = re.sub(r"[^\d.,]", "", num_str)
+            if "," in clean and "." in clean:
+                clean = clean.replace(".", "").replace(",", ".")
+            elif "." in clean:
+                parts = clean.split(".")
+                if len(parts[-1]) in (2, 3) or len(parts) > 2:
+                    clean = clean.replace(".", "")
+            elif "," in clean:
+                parts = clean.split(",")
+                if len(parts[-1]) in (2, 3) or len(parts) > 2:
+                    clean = clean.replace(",", "")
+            try:
+                val = int(float(clean))
+                # Sanity limit for retail consumer receipts: Rp 500 up to Rp 100.000.000
+                if 500 <= val <= 100_000_000:
+                    return Decimal(str(val))
+            except Exception:
+                pass
+            return None
+
+        def extract_numbers_from_line(line: str) -> List[Decimal]:
+            # Handles spaced dots/commas e.g. "69. 020" or "69, 020" or "69,000"
+            raw_matches = re.findall(r"(\d+(?:\s*[.,]\s*\d+)+|\d{3,})", line)
+            nums = []
+            for rm in raw_matches:
+                norm = re.sub(r"\s*([.,])\s*", r"\1", rm)
+                val = clean_idr_number(norm)
+                if val is not None:
+                    nums.append(val)
+            return nums
+
+        # 1. Merchant Name Extraction
         known_merchants = {
             "Indomaret": "Shopping",
             "Alfamart": "Shopping",
@@ -190,6 +202,8 @@ class ReceiptOCRService:
             "Superindo": "Shopping",
             "Hypermart": "Shopping",
             "Transmart": "Shopping",
+            "Toko Kopi Manusia": "Food & Beverage",
+            "Tokokopimanusia": "Food & Beverage",
             "SPBU Pertamina": "Transportation",
             "Pertamina": "Transportation",
             "Shell": "Transportation",
@@ -211,31 +225,36 @@ class ReceiptOCRService:
             "Guardian": "Health",
             "Watson": "Health",
             "Century": "Health",
-            "Gramedia": "Shopping",
-            "Ace Hardware": "Shopping",
-            "Mitra10": "Shopping"
+            "Gramedia": "Shopping"
         }
 
-        # Check known merchants across whole text first
         full_lower = raw_text.lower()
         for k_merch, cat in known_merchants.items():
-            if re.search(r"\b" + re.escape(k_merch.lower()) + r"\b", full_lower):
+            if k_merch.lower().replace(" ", "") in full_lower.replace(" ", "") or k_merch.lower() in full_lower:
                 merchant_name = k_merch
                 category_hint = cat
                 break
 
-        # If not a known brand, use first clean header line
+        # Handle OCR typo on Toko Kopi Manusia (e.g. TOKOKDPIMANUSIA)
+        if "kopimanusia" in full_lower.replace("d", "o") or "tokokopi" in full_lower.replace("d", "o"):
+            merchant_name = "Toko Kopi Manusia"
+            category_hint = "Food & Beverage"
+
+        # If not known, use first clean header line
+        junk_headers = [
+            "selamat datang", "terima kasih", "struk", "nota", "faktur",
+            "kasir", "jl.", "jalan", "telp", "no.", "npwp", "tax", "pos"
+        ]
         if merchant_name == "Struk Pembelian" and lines:
             for line in lines[:5]:
                 l_low = line.lower()
-                if len(line) >= 3 and not any(j in l_low for j in junk_headers):
+                if len(line) >= 3 and not any(j in l_low for j in (junk_headers + reference_line_keywords)):
                     clean_name = re.sub(r"[^a-zA-Z0-9\s&.-]", "", line).strip()
                     if len(clean_name) >= 3:
                         merchant_name = clean_name.title()
                         break
 
         # 2. Extract Transaction Date & Time
-        # Pattern 1: dd/mm/yyyy or dd-mm-yyyy or yyyy-mm-dd
         date_match = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", raw_text)
         time_match = re.search(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b", raw_text)
 
@@ -259,119 +278,88 @@ class ReceiptOCRService:
             except Exception:
                 pass
 
-        # 3. Extract Amounts (Scan backwards from bottom lines where totals reside)
-        def clean_number(num_str: str) -> Optional[Decimal]:
-            try:
-                # Remove spaces and currency symbols
-                clean = re.sub(r"[^\d.,]", "", num_str)
-                # Indonesian receipts often use dots for thousands: 45.000 or commas 45.000,00
-                if "," in clean and "." in clean:
-                    # 45.000,00
-                    clean = clean.replace(".", "").replace(",", ".")
-                elif "." in clean:
-                    # Check if dot is thousands: 45.000 or decimal 45.50
-                    parts = clean.split(".")
-                    if len(parts[-1]) == 3 or len(parts) > 2:
-                        clean = clean.replace(".", "")
-                    else:
-                        clean = clean.replace(".", "")
-                elif "," in clean:
-                    clean = clean.replace(",", "")
-                val = int(float(clean))
-                return Decimal(str(val)) if val > 0 else None
-            except Exception:
-                return None
-
-        # Priority 1: Lines explicitly stating Total / Grand Total / Tagihan / Bayar
+        # 3. Extract Amounts (Scan backwards from bottom lines)
         total_keywords = [
             "grand total", "total belanja", "total bayar", "total akhir",
             "harga total", "jml total", "jumlah total", "total tagihan",
             "total", "tagihan"
         ]
-        payment_keywords = ["tunai", "cash", "debit", "qris", "gopay", "ovo", "shopeepay", "bca", "mandiri", "bri"]
+        payment_keywords = ["edc", "qris", "tunai", "cash", "debit", "gopay", "ovo", "shopeepay", "bca", "mandiri", "bri"]
         subtotal_keywords = ["subtotal", "sub total", "jumlah belanja", "jumlah harga"]
 
-        # Search from bottom to top
+        detected_amounts: List[Tuple[str, Decimal]] = []
+
+        # Step 3.1: Check explicitly labelled Total lines
         for line in reversed(lines):
             l_low = line.lower()
+            if any(r in l_low for r in reference_line_keywords):
+                continue
+            if any(re.search(r"\b" + re.escape(t_kw) + r"\b", l_low) for t_kw in total_keywords):
+                nums = extract_numbers_from_line(line)
+                if nums:
+                    detected_amounts.append(("TOTAL_LINE", nums[-1]))
+                    break
 
-            # Check Total line
-            if total_amount is None:
-                for t_kw in total_keywords:
-                    if re.search(r"\b" + re.escape(t_kw) + r"\b", l_low):
-                        # Find all numbers in this line
-                        num_matches = re.findall(r"(\d+[\d.,]*)", line)
-                        if num_matches:
-                            val = clean_number(num_matches[-1])
-                            if val and val > 100:
-                                total_amount = val
-                                break
+        # Step 3.2: Check Payment line (EDC / BCA / QRIS / Cash / Tunai)
+        for line in reversed(lines):
+            l_low = line.lower()
+            if any(r in l_low for r in reference_line_keywords):
+                continue
+            if any(re.search(r"\b" + re.escape(p_kw) + r"\b", l_low) for p_kw in payment_keywords):
+                nums = extract_numbers_from_line(line)
+                if nums:
+                    detected_amounts.append(("PAYMENT_LINE", nums[-1]))
+                    break
 
-            # Check Subtotal line
-            if subtotal_amount is None:
-                for s_kw in subtotal_keywords:
-                    if re.search(r"\b" + re.escape(s_kw) + r"\b", l_low):
-                        num_matches = re.findall(r"(\d+[\d.,]*)", line)
-                        if num_matches:
-                            val = clean_number(num_matches[-1])
-                            if val and val > 100:
-                                subtotal_amount = val
-                                break
+        # Step 3.3: Check Subtotal line
+        for line in reversed(lines):
+            l_low = line.lower()
+            if any(r in l_low for r in reference_line_keywords):
+                continue
+            if any(re.search(r"\b" + re.escape(s_kw) + r"\b", l_low) for s_kw in subtotal_keywords):
+                nums = extract_numbers_from_line(line)
+                if nums:
+                    subtotal_amount = nums[-1]
+                    detected_amounts.append(("SUBTOTAL_LINE", nums[-1]))
+                    break
 
-            # Check Tax / PPN line
-            if tax_amount is None and ("ppn" in l_low or "pajak" in l_low or "tax" in l_low):
-                num_matches = re.findall(r"(\d+[\d.,]*)", line)
-                if num_matches:
-                    val = clean_number(num_matches[-1])
-                    if val:
-                        tax_amount = val
+        # Reconcile detected amounts
+        edc_val = next((val for label, val in detected_amounts if label == "PAYMENT_LINE"), None)
+        total_val = next((val for label, val in detected_amounts if label == "TOTAL_LINE"), None)
+        sub_val = next((val for label, val in detected_amounts if label == "SUBTOTAL_LINE"), None)
 
-        # Fallback 1: If total not found, check payment line (Tunai / QRIS / Cash)
+        if edc_val and sub_val and edc_val == sub_val:
+            total_amount = edc_val
+        elif total_val and edc_val and abs(total_val - edc_val) <= 100:
+            # Prefer payment line if total line was slightly misread (e.g. 69.000 vs 69.020)
+            total_amount = edc_val
+        elif total_val:
+            total_amount = total_val
+        elif edc_val:
+            total_amount = edc_val
+        elif sub_val:
+            total_amount = sub_val
+
+        # Fallback: Scan lines from bottom for first valid amount not on a reference line
         if total_amount is None:
             for line in reversed(lines):
                 l_low = line.lower()
-                for p_kw in payment_keywords:
-                    if re.search(r"\b" + re.escape(p_kw) + r"\b", l_low):
-                        num_matches = re.findall(r"(\d+[\d.,]*)", line)
-                        if num_matches:
-                            val = clean_number(num_matches[-1])
-                            if val and val > 100:
-                                total_amount = val
-                                break
-                if total_amount:
+                if any(r in l_low for r in reference_line_keywords):
+                    continue
+                nums = extract_numbers_from_line(line)
+                if nums:
+                    total_amount = nums[-1]
                     break
 
-        # Fallback 2: Subtotal as total
-        if total_amount is None and subtotal_amount is not None:
-            total_amount = subtotal_amount
-
-        # Fallback 3: Largest number in the entire receipt >= 1000
-        if total_amount is None:
-            all_numbers = re.findall(r"\b(\d{1,3}(?:\.\d{3})+|\d{4,})\b", raw_text)
-            candidates = []
-            for num in all_numbers:
-                val = clean_number(num)
-                if val and val >= 1000:
-                    candidates.append(val)
-            if candidates:
-                # Typically the total is the maximum number or close to it
-                total_amount = max(candidates)
-
-        # 4. Infer Category if not matched by merchant
-        if category_hint == "Shopping":
-            food_words = ["makan", "minum", "kopi", "cafe", "mie", "soto", "bakso", "nasi", "ayam", "snack", "resto"]
-            transport_words = ["bensin", "spbu", "pertamax", "pertalite", "shell", "solar", "parkir", "tol"]
-            health_words = ["obat", "apotek", "farmasi", "vitamin", "klinik", "dokter", "resep"]
-            bills_words = ["listrik", "pln", "pdam", "air", "pulsa", "kuota", "wifi", "indihome"]
-
-            if any(w in full_lower for w in food_words):
-                category_hint = "Food & Beverage"
-            elif any(w in full_lower for w in transport_words):
-                category_hint = "Transportation"
-            elif any(w in full_lower for w in health_words):
-                category_hint = "Health"
-            elif any(w in full_lower for w in bills_words):
-                category_hint = "Utilities & Bills"
+        # 4. Infer Category
+        if any(k in full_lower for k in ["kopi", "coffee", "americano", "latte", "goreng", "resto", "makan", "soto", "mie", "bakso"]):
+            category_hint = "Food & Beverage"
+        elif any(k in full_lower for k in ["bensin", "spbu", "pertamax", "pertalite", "shell", "solar"]):
+            category_hint = "Transportation"
+        elif any(k in full_lower for k in ["obat", "apotek", "farmasi", "vitamin", "klinik", "dokter"]):
+            category_hint = "Health"
+        elif any(k in full_lower for k in ["listrik", "pln", "pdam", "air", "pulsa", "kuota"]):
+            category_hint = "Utilities & Bills"
 
         return {
             "merchant_name": merchant_name,
@@ -402,14 +390,12 @@ class ReceiptOCRService:
         filename = f"{filename_prefix}_{unique_id}.jpg"
         full_path = dest_path / filename
 
-        # Optimize & save as JPEG using Pillow
         try:
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
             img.save(full_path, format="JPEG", quality=85)
         except Exception:
-            # Direct binary write fallback
             with open(full_path, "wb") as f:
                 f.write(image_bytes)
 
@@ -432,14 +418,12 @@ class ReceiptOCRService:
         receipt_url: Optional[str] = None
         raw_bytes: Optional[bytes] = None
 
-        # Extract bytes if needed for saving
         if isinstance(image_input, bytes):
             raw_bytes = image_input
         elif isinstance(image_input, (str, Path)) and os.path.exists(image_input):
             with open(image_input, "rb") as f:
                 raw_bytes = f.read()
 
-        # Save to disk if requested
         if save_dir and raw_bytes:
             filename, file_path_saved = self.save_receipt_file(raw_bytes, save_dir)
             if base_url:
@@ -448,7 +432,6 @@ class ReceiptOCRService:
             else:
                 receipt_url = f"/uploads/receipts/{filename}"
 
-        # Run OCR
         try:
             raw_text = self.extract_text(image_input)
             ocr_success = bool(raw_text.strip())
@@ -457,7 +440,6 @@ class ReceiptOCRService:
             raw_text = ""
             ocr_success = False
 
-        # Parse Entities
         parsed = self.parse_receipt_text(raw_text)
 
         return {

@@ -3,6 +3,44 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from app.services.receipt_ocr import receipt_ocr_service
 
+def test_parse_toko_kopi_manusia_receipt():
+    sample_text = """
+    TOKOKDPIMANUSIA
+
+    No + TKMKBO1 20261 1170018
+    Tanggal.» 17-11-2026 09:36
+    Info revi l2a.6)
+
+    Mode : DINE IN
+
+    Pax TI
+
+    Kasir + KASIRKB
+
+    AMERICANO. ICE
+
+    1x 038.570 38. 570
+    KENTANG GORENG AROMA
+
+    1x 030, 450 30. 450
+
+    Subtotal : 69. 020
+    Grand Total: 69,000
+    EDC - BCA : 69, 020
+
+    Nonor antrian
+    18
+
+    Tunggu nomor kamu dipanggi I
+    """
+    result = receipt_ocr_service.parse_receipt_text(sample_text)
+    assert result["merchant_name"] == "Toko Kopi Manusia"
+    assert result["total_amount"] == Decimal("69020")
+    assert result["category_hint"] == "Food & Beverage"
+    assert result["transaction_date"].day == 17
+    assert result["transaction_date"].month == 11
+    assert result["transaction_date"].year == 2026
+
 def test_parse_indomaret_receipt():
     sample_text = """
     INDOMARET KEBON JERUK
