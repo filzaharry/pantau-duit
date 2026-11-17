@@ -48,19 +48,20 @@ class ReceiptOCRService:
 
     def preprocess_image(self, image: Image.Image) -> Image.Image:
         """
-        Enhance image quality cleanly without destructive thresholding.
-        Avoids fixed black-and-white binarization which destroys text in phone shadows.
+        Normalize image for OCR.
+        Preserves original scale unless image is tiny (< 400px width).
+        Avoids interpolation blur on stylized bold headers.
         """
         if image.mode in ("RGBA", "P"):
             image = image.convert("RGB")
 
-        # Resize if width < 1200px to ensure clear OCR resolution
+        # Only scale up if extremely small (< 400px)
         w, h = image.size
-        if w < 1200:
-            scale = 1200 / float(w)
-            new_w = 1200
+        if w < 400:
+            scale = 800 / float(w)
+            new_w = 800
             new_h = int(float(h) * scale)
-            image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            image = image.resize((new_w, new_h), Image.Resampling.BILINEAR)
 
         return image
 
