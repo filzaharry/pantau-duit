@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import re
+import uuid
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone, timedelta
@@ -26,7 +27,8 @@ def send_telegram_message(
     bot_token: str,
     chat_id: int,
     text: str,
-    parse_mode: str = "HTML"
+    parse_mode: str = "HTML",
+    reply_markup: Optional[Dict[str, Any]] = None
 ) -> bool:
     """Send message to a Telegram chat via HTTP Bot API using standard library urllib."""
     if not bot_token:
@@ -40,6 +42,9 @@ def send_telegram_message(
         "parse_mode": parse_mode,
         "disable_web_page_preview": True
     }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -53,6 +58,103 @@ def send_telegram_message(
     except Exception as e:
         logger.error(f"Failed to send Telegram message to chat {chat_id}: {e}")
         return False
+
+
+def answer_callback_query(
+    bot_token: str,
+    callback_query_id: str,
+    text: Optional[str] = None,
+    show_alert: bool = False
+) -> bool:
+    """Acknowledge Telegram callback query from inline buttons."""
+    if not bot_token or not callback_query_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+        payload["show_alert"] = show_alert
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"}
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.status == 200
+    except Exception as e:
+        logger.error(f"Failed to answer callback query {callback_query_id}: {e}")
+        return False
+
+
+def build_wallet_inline_keyboard(accounts: List[Account]) -> Dict[str, Any]:
+    """Generate Telegram inline keyboard for wallet selection."""
+    inline_keyboard = []
+    for acc in accounts:
+        bal = acc.current_balance or Decimal("0")
+        bal_str = format_rupiah(bal)
+        icon = "💵" if acc.type == "CASH" else ("📱" if acc.type == "E_WALLET" else "🏦")
+        button_text = f"{icon} {acc.name} ({bal_str})"
+        inline_keyboard.append([
+            {"text": button_text, "callback_data": f"select_wallet:{acc.id}"}
+        ])
+    inline_keyboard.append([
+        {"text": "❌ Batalkan", "callback_data": "cancel_receipt"}
+    ])
+    return {"inline_keyboard": inline_keyboard}
+
+
+def format_receipt_breakdown_html(
+    merchant_name: str,
+    total_amount: Decimal,
+    items: List[Dict[str, Any]],
+    subtotal_amount: Optional[Decimal] = None,
+    taxes: Optional[List[Dict[str, Any]]] = None,
+    discounts: Optional[List[Dict[str, Any]]] = None,
+    category_name: str = "Shopping",
+    transaction_date: Optional[datetime] = None
+) -> str:
+    """Format structured receipt breakdown for Telegram user confirmation."""
+    lines = ["🧾 <b>Detail Struk Belanja Terdeteksi:</b>\n"]
+    lines.append(f"🏪 Toko/Merchant: <b>{merchant_name}</b>")
+    if transaction_date:
+        lines.append(f"📅 Tanggal: <b>{transaction_date.strftime('%d/%m/%Y %H:%M')}</b>")
+    lines.append(f"🏷️ Kategori: <b>{category_name}</b>\n")
+
+    if items:
+        lines.append("📋 <b>Rincian Item:</b>")
+        for it in items:
+            name = it.get("name", "Item")
+            qty = it.get("qty", 1)
+            unit_price = it.get("unit_price")
+            total_price = it.get("total_price")
+            if qty > 1 and unit_price:
+                lines.append(f"• {name} (<b>{qty}x</b> @ {format_rupiah(unit_price)}) = <b>{format_rupiah(total_price)}</b>")
+            else:
+                lines.append(f"• {name} = <b>{format_rupiah(total_price or unit_price or 0)}</b>")
+    else:
+        lines.append(f"📋 <b>Rincian:</b> Belanja di {merchant_name}")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    if subtotal_amount and (taxes or discounts or (subtotal_amount != total_amount)):
+        lines.append(f"Subtotal: <code>{format_rupiah(subtotal_amount)}</code>")
+    if taxes:
+        for t in taxes:
+            t_name = t.get("name", "Pajak")
+            lines.append(f"{t_name}: <code>{format_rupiah(t.get('amount', 0))}</code>")
+    if discounts:
+        for d in discounts:
+            d_name = d.get("name", "Diskon")
+            lines.append(f"{d_name}: <code>-{format_rupiah(d.get('amount', 0))}</code>")
+
+    lines.append(f"💰 <b>Total Tagihan: {format_rupiah(total_amount)}</b>\n")
+    lines.append("❓ <b>Apakah detail data di atas sudah benar?</b>")
+    lines.append("Silakan pilih, <b>masuk ke dompet mana saldo dipotong?</b>")
+    return "\n".join(lines)
 
 
 def format_rupiah(amount: Decimal | float | int) -> str:
@@ -399,9 +501,233 @@ def parse_financial_input(
     }
 
 
+def execute_wallet_selection(
+    db: Session,
+    bot_token: str,
+    chat_id: int,
+    tg_account: TelegramAccount,
+    tg_chat: TelegramChat,
+    target_account: Account,
+    pending: Dict[str, Any],
+    tg_username: str,
+    tg_user_id: int
+) -> dict:
+    """Check wallet balance, deduct funds, and record final receipt transaction."""
+    total_amount = Decimal(str(pending["total_amount"]))
+    acc_balance = target_account.current_balance or Decimal("0")
+
+    # 1. Check if balance is sufficient
+    if acc_balance < total_amount:
+        shortage = total_amount - acc_balance
+        warn_msg = (
+            f"⚠️ <b>Maaf, saldo di {target_account.name} kurang!</b>\n\n"
+            f"💳 Dompet: <b>{target_account.name}</b>\n"
+            f"💵 Sisa Saldo: <b>{format_rupiah(acc_balance)}</b>\n"
+            f"💸 Total Belanja: <b>{format_rupiah(total_amount)}</b>\n"
+            f"<i>(Kurang {format_rupiah(shortage)})</i>\n\n"
+            f"Silakan pilih dompet lain yang saldonya mencukupi, atau klik batalkan:"
+        )
+        all_accounts = db.execute(
+            select(Account).where(
+                Account.tenant_id == tg_chat.tenant_id,
+                Account.deleted_at.is_(None),
+                Account.status == "ACTIVE"
+            ).order_by(desc(Account.current_balance))
+        ).scalars().all()
+        keyboard = build_wallet_inline_keyboard(all_accounts)
+        send_telegram_message(bot_token, chat_id, warn_msg, reply_markup=keyboard)
+        return {"status": "insufficient_wallet_balance"}
+
+    # 2. Balance is sufficient: Deduct and record transaction
+    target_account.current_balance -= total_amount
+
+    items = pending.get("items") or []
+    notes_lines = []
+    if items:
+        for it in items:
+            q = it.get("qty", 1)
+            u = it.get("unit_price")
+            t = it.get("total_price")
+            if q > 1 and u:
+                notes_lines.append(f"{it.get('name')} {q}x @{format_rupiah(u)} = {format_rupiah(t)}")
+            else:
+                notes_lines.append(f"{it.get('name')} = {format_rupiah(t or u or 0)}")
+
+    taxes = pending.get("taxes") or []
+    for tx_item in taxes:
+        notes_lines.append(f"{tx_item.get('name')}: {format_rupiah(tx_item.get('amount', 0))}")
+
+    notes_breakdown = " | ".join(notes_lines) if notes_lines else f"Total: {format_rupiah(total_amount)}"
+    full_notes = f"Struk dipindai otomatis via Telegram OCR (@{tg_username or tg_user_id}): {notes_breakdown}"
+
+    tx_date_raw = pending.get("transaction_date")
+    try:
+        tx_date = datetime.fromisoformat(tx_date_raw) if tx_date_raw else datetime.now(timezone.utc)
+    except Exception:
+        tx_date = datetime.now(timezone.utc)
+
+    cat_id = None
+    if pending.get("category_id"):
+        try:
+            cat_id = uuid.UUID(pending["category_id"])
+        except Exception:
+            pass
+
+    new_tx = Transaction(
+        tenant_id=tg_chat.tenant_id,
+        account_id=target_account.id,
+        category_id=cat_id,
+        amount=total_amount,
+        transaction_type="EXPENSE",
+        transaction_date=tx_date,
+        source="TELEGRAM",
+        status="COMPLETED",
+        description=pending.get("merchant_name") or "Struk Belanja",
+        receipt_url=pending.get("receipt_url"),
+        notes=full_notes,
+        metadata_json={
+            "telegram_chat_id": chat_id,
+            "telegram_user_id": tg_user_id,
+            "telegram_username": tg_username,
+            "ocr_engine": "tesseract_local",
+            "merchant": pending.get("merchant_name"),
+            "items": items,
+            "taxes": taxes,
+            "receipt_url": pending.get("receipt_url")
+        },
+        created_by=tg_account.user_id
+    )
+    db.add(new_tx)
+
+    # Reset chat state back to IDLE
+    tg_chat.current_state = "IDLE"
+    tg_chat.state_context = {}
+    tg_chat.last_active_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    success_msg = (
+        f"✅ <b>Transaksi Berhasil Dicatat!</b>\n\n"
+        f"🏪 Toko/Merchant: <b>{pending.get('merchant_name')}</b>\n"
+        f"💸 Total Belanja: <b>{format_rupiah(total_amount)}</b> (Pengeluaran 🔴)\n"
+        f"💳 Dompet: <b>{target_account.name}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Sisa Saldo <b>{target_account.name}</b>: <b>{format_rupiah(target_account.current_balance)}</b>\n\n"
+        f"📎 <i>Foto struk tersimpan aman di transaksi web!</i>"
+    )
+    send_telegram_message(bot_token, chat_id, success_msg)
+    return {
+        "status": "receipt_confirmed_and_recorded",
+        "tx_id": str(new_tx.id),
+        "account_id": str(target_account.id),
+        "amount": float(total_amount)
+    }
+
+
 def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> dict:
-    """Main Telegram webhook controller: handles pairing, commands, and transaction logging."""
+    """Main Telegram webhook controller: handles pairing, commands, button callbacks, and transaction logging."""
+    callback_query = update_data.get("callback_query")
     message = update_data.get("message") or update_data.get("edited_message")
+
+    # -------------------------------------------------------------------------
+    # CALLBACK QUERY (Inline Keyboard Button Clicks)
+    # -------------------------------------------------------------------------
+    if callback_query:
+        callback_id = callback_query.get("id")
+        cb_from = callback_query.get("from", {})
+        tg_user_id = cb_from.get("id")
+        cb_msg = callback_query.get("message", {})
+        chat_id = cb_msg.get("chat", {}).get("id") or tg_user_id
+        cb_data = callback_query.get("data", "")
+
+        tg_username = cb_from.get("username") or ""
+
+        # Acknowledge callback immediately so button spinner stops
+        answer_callback_query(bot_token, callback_id)
+
+        # Lookup linked Telegram account
+        tg_account = db.execute(
+            select(TelegramAccount).where(TelegramAccount.telegram_user_id == tg_user_id)
+        ).scalar_one_or_none()
+
+        if not tg_account:
+            send_telegram_message(
+                bot_token, chat_id,
+                "⚠️ Akun Telegram Anda belum terhubung. Ketik <code>/pair email_anda</code> untuk menghubungkan."
+            )
+            return {"status": "callback_not_paired"}
+
+        # Lookup chat
+        tg_chat = db.execute(
+            select(TelegramChat).where(
+                TelegramChat.telegram_account_id == tg_account.id,
+                TelegramChat.chat_id == chat_id
+            )
+        ).scalar_one_or_none()
+
+        if not tg_chat or tg_chat.current_state != "AWAITING_WALLET_SELECTION":
+            send_telegram_message(
+                bot_token, chat_id,
+                "ℹ️ Sesi pemilihan dompet ini sudah selesai atau kedaluwarsa. Silakan kirim foto struk kembali jika ingin mencatat."
+            )
+            return {"status": "callback_state_expired"}
+
+        pending = (tg_chat.state_context or {}).get("pending_receipt")
+        if not pending:
+            tg_chat.current_state = "IDLE"
+            tg_chat.state_context = {}
+            db.commit()
+            send_telegram_message(
+                bot_token, chat_id,
+                "ℹ️ Data struk tidak ditemukan. Silakan kirim ulang foto struk Anda."
+            )
+            return {"status": "pending_missing"}
+
+        # Button: Cancel Receipt
+        if cb_data == "cancel_receipt":
+            tg_chat.current_state = "IDLE"
+            tg_chat.state_context = {}
+            tg_chat.last_active_at = datetime.now(timezone.utc)
+            db.commit()
+            send_telegram_message(
+                bot_token, chat_id,
+                "❌ <b>Pencatatan struk dibatalkan.</b>\nTidak ada saldo dompet yang terpotong."
+            )
+            return {"status": "receipt_cancelled"}
+
+        # Button: Select Wallet
+        if cb_data.startswith("select_wallet:"):
+            selected_acc_id_str = cb_data.split(":", 1)[1]
+            try:
+                selected_acc_uuid = uuid.UUID(selected_acc_id_str)
+            except Exception:
+                selected_acc_uuid = None
+
+            target_account = db.execute(
+                select(Account).where(Account.id == selected_acc_uuid, Account.deleted_at.is_(None))
+            ).scalar_one_or_none() if selected_acc_uuid else None
+
+            if not target_account:
+                send_telegram_message(
+                    bot_token, chat_id,
+                    "⚠️ Dompet yang dipilih tidak ditemukan atau telah dihapus."
+                )
+                return {"status": "wallet_not_found"}
+
+            return execute_wallet_selection(
+                db=db,
+                bot_token=bot_token,
+                chat_id=chat_id,
+                tg_account=tg_account,
+                tg_chat=tg_chat,
+                target_account=target_account,
+                pending=pending,
+                tg_username=tg_username,
+                tg_user_id=tg_user_id
+            )
+
+        return {"status": "callback_ignored"}
+
     if not message:
         return {"status": "ignored_no_message"}
 
@@ -668,6 +994,87 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
 
     tenant_id = tenant.id
 
+    # Lookup chat record
+    tg_chat = db.execute(
+        select(TelegramChat).where(
+            TelegramChat.telegram_account_id == tg_account.id,
+            TelegramChat.chat_id == chat_id
+        )
+    ).scalar_one_or_none()
+
+    # -------------------------------------------------------------------------
+    # STATE: AWAITING_WALLET_SELECTION (Interactive receipt confirmation)
+    # -------------------------------------------------------------------------
+    if tg_chat and tg_chat.current_state == "AWAITING_WALLET_SELECTION":
+        pending = (tg_chat.state_context or {}).get("pending_receipt")
+        if not pending:
+            tg_chat.current_state = "IDLE"
+            tg_chat.state_context = {}
+            db.commit()
+        else:
+            # Check if user wants to cancel
+            if raw_text.lower() in ("batal", "cancel", "/cancel", "batalin", "gak jadi", "batal struk"):
+                tg_chat.current_state = "IDLE"
+                tg_chat.state_context = {}
+                tg_chat.last_active_at = datetime.now(timezone.utc)
+                db.commit()
+                send_telegram_message(
+                    bot_token, chat_id,
+                    "❌ <b>Pencatatan struk dibatalkan.</b>\nTidak ada saldo dompet yang terpotong."
+                )
+                return {"status": "receipt_cancelled"}
+
+            # If user sent a new image or a slash command, clear state and let it proceed
+            if is_image or raw_text.startswith(("/start", "/saldo", "/transaksi", "/reset", "/unpair", "/logout", "/pair", "/login")):
+                tg_chat.current_state = "IDLE"
+                tg_chat.state_context = {}
+                db.flush()
+            else:
+                # User typed a wallet name or number (e.g. "BCA", "Tabungan", "1")
+                tenant_accs = db.execute(
+                    select(Account).where(
+                        Account.tenant_id == tg_chat.tenant_id,
+                        Account.deleted_at.is_(None),
+                        Account.status == "ACTIVE"
+                    ).order_by(desc(Account.current_balance))
+                ).scalars().all()
+
+                selected_account = None
+                if raw_text.isdigit():
+                    idx = int(raw_text) - 1
+                    if 0 <= idx < len(tenant_accs):
+                        selected_account = tenant_accs[idx]
+
+                if not selected_account:
+                    for acc in tenant_accs:
+                        if acc.name.lower() in raw_text.lower() or raw_text.lower() in acc.name.lower():
+                            selected_account = acc
+                            break
+
+                if selected_account:
+                    return execute_wallet_selection(
+                        db=db,
+                        bot_token=bot_token,
+                        chat_id=chat_id,
+                        tg_account=tg_account,
+                        tg_chat=tg_chat,
+                        target_account=selected_account,
+                        pending=pending,
+                        tg_username=tg_username,
+                        tg_user_id=tg_user_id
+                    )
+                else:
+                    merch = pending.get("merchant_name") or "Struk Belanja"
+                    tot = Decimal(str(pending.get("total_amount", 0)))
+                    keyboard = build_wallet_inline_keyboard(tenant_accs)
+                    send_telegram_message(
+                        bot_token, chat_id,
+                        f"ℹ️ Anda sedang dalam proses konfirmasi struk <b>{merch}</b> (Total: <b>{format_rupiah(tot)}</b>).\n\n"
+                        f"Silakan pilih salah satu dompet di tombol bawah ini, atau ketik <b>batal</b>:",
+                        reply_markup=keyboard
+                    )
+                    return {"status": "awaiting_wallet_choice"}
+
     # -------------------------------------------------------------------------
     # COMMAND: /start or /help or /bantuan
     # -------------------------------------------------------------------------
@@ -819,7 +1226,6 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
         )
 
         total_amount = ocr_result.get("total_amount")
-        target_account = accounts[0]
 
         if total_amount and total_amount > 0:
             merchant_name = ocr_result.get("merchant_name") or "Struk Belanja"
@@ -833,72 +1239,64 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
                 filtered = [c for c in categories if c.type in ("EXPENSE", "BOTH")]
                 target_category = filtered[0] if filtered else (categories[0] if categories else None)
 
-            target_account.current_balance -= total_amount
             tx_date = ocr_result.get("transaction_date") or datetime.now(timezone.utc)
+            items = ocr_result.get("items") or []
+            taxes = ocr_result.get("taxes") or []
+            discounts = ocr_result.get("discounts") or []
+            subtotal_amount = ocr_result.get("subtotal_amount")
 
-            new_tx = Transaction(
-                tenant_id=tenant_id,
-                account_id=target_account.id,
-                category_id=target_category.id if target_category else None,
-                amount=total_amount,
-                transaction_type="EXPENSE",
-                transaction_date=tx_date,
-                source="TELEGRAM",
-                status="COMPLETED",
-                description=merchant_name,
-                receipt_url=ocr_result.get("receipt_url"),
-                notes=f"Struk dipindai otomatis via Telegram OCR (@{tg_username or tg_user_id}): {merchant_name}",
-                metadata_json={
-                    "telegram_chat_id": chat_id,
-                    "telegram_user_id": tg_user_id,
-                    "telegram_username": tg_username,
-                    "ocr_engine": "tesseract_local",
-                    "merchant": merchant_name,
-                    "receipt_url": ocr_result.get("receipt_url"),
-                    "raw_ocr_preview": (ocr_result.get("raw_text") or "")[:200]
-                },
-                created_by=user.id
-            )
-            db.add(new_tx)
+            # Save pending receipt in chat state context
+            pending_data = {
+                "merchant_name": merchant_name,
+                "total_amount": str(total_amount),
+                "subtotal_amount": str(subtotal_amount or total_amount),
+                "tax_amount": str(ocr_result.get("tax_amount") or 0),
+                "taxes": taxes,
+                "discounts": discounts,
+                "items": items,
+                "category_id": str(target_category.id) if target_category else None,
+                "category_name": target_category.name if target_category else "Shopping",
+                "transaction_date": tx_date.isoformat(),
+                "receipt_url": ocr_result.get("receipt_url")
+            }
 
-            tg_chat = db.execute(
-                select(TelegramChat).where(
-                    TelegramChat.telegram_account_id == tg_account.id,
-                    TelegramChat.chat_id == chat_id
-                )
-            ).scalar_one_or_none()
             if tg_chat:
+                tg_chat.current_state = "AWAITING_WALLET_SELECTION"
+                tg_chat.state_context = {"pending_receipt": pending_data}
                 tg_chat.last_active_at = datetime.now(timezone.utc)
+
                 msg_record = TelegramMessage(
                     telegram_chat_id=tg_chat.id,
                     telegram_message_id=message.get("message_id", 0),
                     direction="INCOMING",
                     raw_text=raw_text or "[FOTO STRUK]",
-                    parsed_intent="RECORD_EXPENSE_OCR",
+                    parsed_intent="SCAN_RECEIPT_OCR",
                     status="PROCESSED"
                 )
                 db.add(msg_record)
 
             db.commit()
 
-            nominal_formatted = format_rupiah(total_amount)
-            new_bal_formatted = format_rupiah(target_account.current_balance)
-            date_formatted = tx_date.strftime("%d/%m/%Y")
-            cat_name = target_category.name if target_category else "Shopping"
-
-            reply_text = (
-                f"🧾 <b>Struk Belanja Berhasil Dipindai!</b> (OCR Lokal)\n\n"
-                f"🏪 Toko/Merchant: <b>{merchant_name}</b>\n"
-                f"📅 Tanggal: <b>{date_formatted}</b>\n"
-                f"💸 Total Belanja: <b>{nominal_formatted}</b> (Pengeluaran 🔴)\n"
-                f"🏷️ Kategori: <b>{cat_name}</b>\n"
-                f"💳 Dompet: <b>{target_account.name}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 Sisa Saldo <b>{target_account.name}</b>: <b>{new_bal_formatted}</b>\n\n"
-                f"📎 <i>Foto struk tersimpan aman di transaksi web!</i>"
+            # Format detailed item breakdown HTML & send inline keyboard buttons
+            breakdown_text = format_receipt_breakdown_html(
+                merchant_name=merchant_name,
+                total_amount=total_amount,
+                items=items,
+                subtotal_amount=subtotal_amount,
+                taxes=taxes,
+                discounts=discounts,
+                category_name=target_category.name if target_category else "Shopping",
+                transaction_date=tx_date
             )
-            send_telegram_message(bot_token, chat_id, reply_text)
-            return {"status": "receipt_recorded", "tx_id": str(new_tx.id), "amount": float(total_amount)}
+            keyboard = build_wallet_inline_keyboard(accounts)
+            send_telegram_message(bot_token, chat_id, breakdown_text, reply_markup=keyboard)
+
+            return {
+                "status": "awaiting_wallet_selection",
+                "merchant": merchant_name,
+                "total": float(total_amount),
+                "items_count": len(items)
+            }
         else:
             raw_preview = (ocr_result.get("raw_text") or "").strip()[:150]
             preview_msg = f"\n\n<i>Teks terbaca sebagian:</i>\n<code>{raw_preview}...</code>" if raw_preview else ""

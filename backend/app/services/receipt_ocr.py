@@ -279,7 +279,198 @@ class ReceiptOCRService:
             except Exception:
                 pass
 
-        # 3. Extract Amounts (Scan backwards from bottom lines)
+        # 3. Extract Amounts & Line Items
+        header_patterns = [
+            r"\b(?:tanggal|date|waktu|time|jam)\b",
+            r"\b(?:no|nomor|order|invoice|inv|trx|kasir|cashier|pax|table|meja|antrian)\s*[:.]?",
+            r"\b(?:dine\s*in|take\s*away|takeaway|info|mode)\b",
+            r"\b(?:jl\.|jalan|telp|phone|npwp|selamat\s+datang|terima\s+kasih)\b"
+        ]
+
+        summary_patterns = [
+            r"\b(?:bayar|total|subtotal|sub\s*total|grand\s*total|total\s*belanja|total\s*akhir|total\s*bayar|total\s*tagihan|harga\s*jual|tagihan)\b",
+            r"\b(?:tunai|cash|kembalian|kembali|change)\b",
+            r"\b(?:edc|bca|mandiri|bri|bni|qris|debit|kredit|gopay|ovo|dana|shopeepay)\b",
+            r"\b\d+\s*item\b"
+        ]
+
+        tax_keywords = [
+            "pb1", "pb 1", "ppn", "pajak", "tax", "service", "sc", "service charge"
+        ]
+
+        discount_keywords = [
+            "diskon", "discount", "potongan", "hemat"
+        ]
+
+        taxes: List[Dict[str, Any]] = []
+        discounts: List[Dict[str, Any]] = []
+
+        # 3.1 Extract Line Items, Taxes, and Discounts
+        i = 0
+        n = len(lines)
+        while i < n:
+            line = lines[i]
+            l_low = line.lower()
+            norm_line = re.sub(r"\s*([.,])\s*", r"\1", line)
+
+            # Check for taxes/fees
+            is_tax = False
+            for tkw in tax_keywords:
+                if re.search(r"\b" + re.escape(tkw) + r"\b", l_low):
+                    nums = extract_numbers_from_line(line)
+                    if nums:
+                        tax_name = line.split(":")[0].strip() if ":" in line else line.strip(" -:*•")
+                        taxes.append({
+                            "name": tax_name,
+                            "amount": nums[-1]
+                        })
+                        is_tax = True
+                        break
+            if is_tax:
+                i += 1
+                continue
+
+            # Check for discounts
+            is_disc = False
+            for dkw in discount_keywords:
+                if re.search(r"\b" + re.escape(dkw) + r"\b", l_low):
+                    nums = extract_numbers_from_line(line)
+                    if nums:
+                        disc_name = line.split(":")[0].strip() if ":" in line else line.strip(" -:*•")
+                        discounts.append({
+                            "name": disc_name,
+                            "amount": nums[-1]
+                        })
+                        is_disc = True
+                        break
+            if is_disc:
+                i += 1
+                continue
+
+            # Skip headers
+            if any(re.search(hp, l_low) for hp in header_patterns):
+                i += 1
+                continue
+
+            # Skip summary lines
+            if any(re.search(sp, l_low) for sp in summary_patterns):
+                i += 1
+                continue
+
+            # Case 1: Two-line item:
+            # line i: Item name (e.g. "AMERICANO. ICE")
+            # line i+1: "1x @38.570 38.570" or "1x 038.570 38.570" or "3 x 15.000 45.000"
+            if i + 1 < n:
+                next_line = lines[i + 1]
+                next_norm = re.sub(r"\s*([.,])\s*", r"\1", next_line)
+                m_qty_price = re.match(
+                    r"^(\d+)\s*x\s*(?:[@oO0]?\s*(\d+(?:[.,]\d+)*))?\s*=?\s*(\d+(?:[.,]\d+)*)$",
+                    next_norm,
+                    re.IGNORECASE
+                )
+                if m_qty_price:
+                    qty_val = max(1, int(m_qty_price.group(1)))
+                    unit_raw = m_qty_price.group(2)
+                    tot_raw = m_qty_price.group(3)
+                    tot_num = clean_idr_number(tot_raw)
+                    unit_cleaned = re.sub(r"^0+(?=\d)", "", unit_raw) if unit_raw else None
+                    unit_num = clean_idr_number(unit_cleaned) if unit_cleaned else (tot_num / qty_val if tot_num else None)
+                    if tot_num and len(line) >= 2:
+                        items.append({
+                            "name": line.strip(" -:*•"),
+                            "qty": qty_val,
+                            "unit_price": unit_num or (tot_num / qty_val),
+                            "total_price": tot_num
+                        })
+                        i += 2
+                        continue
+
+            # Case 2: Inline item with qty and total: "Soto Sapi Bungkus 3 x 15.000 45.000"
+            m_inline_qty = re.search(
+                r"^(.*?)\s+(\d+)\s*x\s*(?:[@oO0]?\s*(\d+(?:[.,]\d+)*))?\s*=?\s*(\d+(?:[.,]\d+)*)$",
+                norm_line,
+                re.IGNORECASE
+            )
+            if m_inline_qty:
+                item_name = m_inline_qty.group(1).strip(" -:*•")
+                qty_val = max(1, int(m_inline_qty.group(2)))
+                unit_raw = m_inline_qty.group(3)
+                tot_raw = m_inline_qty.group(4)
+                tot_num = clean_idr_number(tot_raw)
+                unit_cleaned = re.sub(r"^0+(?=\d)", "", unit_raw) if unit_raw else None
+                unit_num = clean_idr_number(unit_cleaned) if unit_cleaned else (tot_num / qty_val if tot_num else None)
+                if tot_num and len(item_name) >= 2 and not any(re.search(sp, item_name.lower()) for sp in summary_patterns):
+                    items.append({
+                        "name": item_name,
+                        "qty": qty_val,
+                        "unit_price": unit_num or (tot_num / qty_val),
+                        "total_price": tot_num
+                    })
+                    i += 1
+                    continue
+
+            # Case 3: Prefix qty: "2x SOTO MIE BOGOR 40.000"
+            m_prefix_qty = re.match(
+                r"^(\d+)\s*x\s+(.*?)\s+(\d+(?:[.,]\d+)+)$",
+                norm_line,
+                re.IGNORECASE
+            )
+            if m_prefix_qty:
+                qty_val = max(1, int(m_prefix_qty.group(1)))
+                item_name = m_prefix_qty.group(2).strip(" -:*•")
+                tot_raw = m_prefix_qty.group(3)
+                tot_num = clean_idr_number(tot_raw)
+                if tot_num and len(item_name) >= 2 and not any(re.search(sp, item_name.lower()) for sp in summary_patterns):
+                    items.append({
+                        "name": item_name,
+                        "qty": qty_val,
+                        "unit_price": tot_num / qty_val,
+                        "total_price": tot_num
+                    })
+                    i += 1
+                    continue
+
+            # Case 4: Retail minimarket format: "ULTRA MILK COKLAT 250ML 1 7.200"
+            m_retail = re.search(r"^(.*?)\s+(\d{1,2})\s+(\d+(?:[.,]\d+)+)$", norm_line)
+            if m_retail:
+                item_name = m_retail.group(1).strip(" -:*•")
+                qty_val = max(1, int(m_retail.group(2)))
+                tot_raw = m_retail.group(3)
+                tot_num = clean_idr_number(tot_raw)
+                if tot_num and len(item_name) >= 2 and not any(re.search(sp, item_name.lower()) for sp in summary_patterns):
+                    items.append({
+                        "name": item_name,
+                        "qty": qty_val,
+                        "unit_price": tot_num / qty_val,
+                        "total_price": tot_num
+                    })
+                    i += 1
+                    continue
+
+            # Case 5: Simple item line: "Item Name 25.000"
+            m_simple = re.search(r"^(.*?)\s+(\d+(?:[.,]\d+)+)$", norm_line)
+            if m_simple:
+                item_name = m_simple.group(1).strip(" -:*•")
+                tot_raw = m_simple.group(2)
+                tot_num = clean_idr_number(tot_raw)
+                if (
+                    tot_num
+                    and len(item_name) >= 3
+                    and not any(re.search(sp, item_name.lower()) for sp in summary_patterns)
+                    and not any(re.search(hp, item_name.lower()) for hp in header_patterns)
+                ):
+                    items.append({
+                        "name": item_name,
+                        "qty": 1,
+                        "unit_price": tot_num,
+                        "total_price": tot_num
+                    })
+                    i += 1
+                    continue
+
+            i += 1
+
+        # 3.2 Extract Grand Totals (Scan backwards from bottom lines)
         total_keywords = [
             "grand total", "total belanja", "total bayar", "total akhir",
             "harga total", "jml total", "jumlah total", "total tagihan",
@@ -290,7 +481,7 @@ class ReceiptOCRService:
 
         detected_amounts: List[Tuple[str, Decimal]] = []
 
-        # Step 3.1: Check explicitly labelled Total lines
+        # Check explicitly labelled Total lines
         for line in reversed(lines):
             l_low = line.lower()
             if any(r in l_low for r in reference_line_keywords):
@@ -301,7 +492,7 @@ class ReceiptOCRService:
                     detected_amounts.append(("TOTAL_LINE", nums[-1]))
                     break
 
-        # Step 3.2: Check Payment line (EDC / BCA / QRIS / Cash / Tunai)
+        # Check Payment line (EDC / BCA / QRIS / Cash / Tunai)
         for line in reversed(lines):
             l_low = line.lower()
             if any(r in l_low for r in reference_line_keywords):
@@ -312,7 +503,7 @@ class ReceiptOCRService:
                     detected_amounts.append(("PAYMENT_LINE", nums[-1]))
                     break
 
-        # Step 3.3: Check Subtotal line
+        # Check Subtotal line
         for line in reversed(lines):
             l_low = line.lower()
             if any(r in l_low for r in reference_line_keywords):
@@ -332,7 +523,6 @@ class ReceiptOCRService:
         if edc_val and sub_val and edc_val == sub_val:
             total_amount = edc_val
         elif total_val and edc_val and abs(total_val - edc_val) <= 100:
-            # Prefer payment line if total line was slightly misread (e.g. 69.000 vs 69.020)
             total_amount = edc_val
         elif total_val:
             total_amount = total_val
@@ -352,6 +542,16 @@ class ReceiptOCRService:
                     total_amount = nums[-1]
                     break
 
+        # Reconcile subtotal & taxes
+        if taxes and tax_amount is None:
+            tax_amount = sum(t["amount"] for t in taxes)
+
+        if subtotal_amount is None and items:
+            subtotal_amount = sum(it["total_price"] for it in items)
+
+        if total_amount is None and subtotal_amount:
+            total_amount = subtotal_amount + (tax_amount or Decimal("0")) - sum(d["amount"] for d in discounts)
+
         # 4. Infer Category
         if any(k in full_lower for k in ["kopi", "coffee", "americano", "latte", "goreng", "resto", "makan", "soto", "mie", "bakso"]):
             category_hint = "Food & Beverage"
@@ -367,6 +567,8 @@ class ReceiptOCRService:
             "total_amount": total_amount,
             "subtotal_amount": subtotal_amount,
             "tax_amount": tax_amount,
+            "taxes": taxes,
+            "discounts": discounts,
             "transaction_date": parsed_date or datetime.now(timezone.utc),
             "category_hint": category_hint,
             "items": items,
@@ -450,6 +652,8 @@ class ReceiptOCRService:
             "total_amount": parsed["total_amount"],
             "subtotal_amount": parsed["subtotal_amount"],
             "tax_amount": parsed["tax_amount"],
+            "taxes": parsed.get("taxes", []),
+            "discounts": parsed.get("discounts", []),
             "transaction_date": parsed["transaction_date"],
             "category_hint": parsed["category_hint"],
             "items": parsed["items"],
