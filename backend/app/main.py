@@ -713,7 +713,7 @@ def delete_account(acc_id: str, current_user: User = Depends(get_current_user), 
             or_(Transaction.account_id == acc.id, Transaction.destination_account_id == acc.id),
             Transaction.deleted_at.is_(None)
         )
-        .values(deleted_at=now_utc, status="ARCHIVED")
+        .values(deleted_at=now_utc, status="VOIDED")
     )
     
     db.commit()
@@ -1115,7 +1115,7 @@ def delete_transaction(tx_id: str, current_user: User = Depends(get_current_user
             acc.current_balance += tx.amount
             dest_acc.current_balance -= tx.amount
 
-    tx.status = "ARCHIVED"
+    tx.status = "VOIDED"
     tx.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
