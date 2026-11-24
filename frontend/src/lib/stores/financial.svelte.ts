@@ -680,23 +680,15 @@ class FinancialStore {
 	}
 
 	async deleteTransaction(id: string) {
-		try {
-			await apiFetch(`/transactions/${id}`, { method: 'DELETE' });
-			await this.loadFromDatabase();
-			notificationStore.showToast('Transaksi berhasil dihapus dari database', 'info');
-			return;
-		} catch (err) {
-			console.warn('API delete sync failed:', err);
-		}
-
 		const tx = this.transactions.find((t) => t.id === id);
+
+		// Optimistic removal and ledger revert
 		if (tx) {
 			const account = this.accounts.find((a) => a.id === tx.account_id);
 			const destAccount = tx.destination_account_id
 				? this.accounts.find((a) => a.id === tx.destination_account_id)
 				: undefined;
 
-			// Revert ledger
 			if (account) {
 				if (tx.transaction_type === 'EXPENSE') {
 					account.current_balance = Number(account.current_balance || 0) + tx.amount;
@@ -712,8 +704,27 @@ class FinancialStore {
 				}
 			}
 
-			this.transactions = this.transactions.filter((t) => t.id !== id);
+			// Immediately filter out from reactive stores
+			this.personalTransactions = this.personalTransactions.filter((t) => t.id !== id);
+			this.platformTransactions = this.platformTransactions.filter((t) => t.id !== id);
+		}
+
+		try {
+			const res = await apiFetch<any>(`/transactions/${id}`, { method: 'DELETE' });
+			if (res.error) {
+				console.error('API delete error:', res.error);
+				notificationStore.showToast(res.error, 'error');
+				await this.loadFromDatabase();
+				return false;
+			}
 			notificationStore.showToast('Transaksi berhasil dihapus', 'info');
+			await this.loadFromDatabase();
+			return true;
+		} catch (err: any) {
+			console.error('API delete sync failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus transaksi dari database', 'error');
+			await this.loadFromDatabase();
+			return false;
 		}
 	}
 

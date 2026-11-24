@@ -501,6 +501,61 @@ def parse_financial_input(
     }
 
 
+def match_item_to_category(
+    item_name: str,
+    categories: List[Category],
+    default_category_id: Optional[uuid.UUID] = None
+) -> Optional[uuid.UUID]:
+    """Helper to auto-match individual receipt items to tenant categories based on keywords."""
+    if not item_name or not categories:
+        return default_category_id
+
+    lower = item_name.lower()
+    keyword_map = {
+        "Food & Beverage": [
+            "soto", "mie", "mi ", "bakso", "nasi", "ayam", "bebek", "ikan",
+            "kopi", "coffee", "latte", "tea", "teh", "susu", "milk", "jus",
+            "juice", "roti", "bread", "cake", "snack", "chiki", "biskuit",
+            "wafer", "cokelat", "chocolate", "gorengan", "martabak", "pizza",
+            "burger", "resto", "cafe", "warung", "dapur", "kuliner", "makan",
+            "minum", "mcd", "kfc", "indomie", "pop mie"
+        ],
+        "Transportation": [
+            "bensin", "pertalite", "pertamax", "solar", "shell", "spbu",
+            "toll", "tol", "parkir", "parking", "grab", "gojek", "goride",
+            "gocar", "maxim", "taxi", "taksi", "kereta", "krl", "mrt",
+            "busway", "transjakarta", "flight", "pesawat"
+        ],
+        "Shopping": [
+            "sabun", "shampoo", "sampo", "odol", "pasta gigi", "tissue",
+            "tisu", "deterjen", "rinso", "molto", "minyak", "beras",
+            "telur", "gula", "garam", "bumbu", "baju", "celana", "sepatu",
+            "sandal", "kaos", "tas", "alfamart", "indomaret", "superindo",
+            "hypermart", "transmart", "tokopedia", "shopee"
+        ],
+        "Utilities & Bills": [
+            "listrik", "pln", "air", "pdam", "wifi", "internet", "indihome",
+            "biznet", "pulsa", "paket data", "bpjs", "asuransi", "iuran"
+        ],
+        "Health & Medical": [
+            "obat", "apotek", "farmasi", "vitamin", "panadol", "paracetamol",
+            "dokter", "klinik", "rumah sakit", "laboratorium"
+        ]
+    }
+
+    for target_cat_name, kws in keyword_map.items():
+        if any(re.search(r"\b" + re.escape(kw) + r"\b", lower) for kw in kws):
+            for c in categories:
+                if target_cat_name.lower() in c.name.lower() or c.name.lower() in target_cat_name.lower():
+                    return c.id
+
+    for c in categories:
+        if c.name.lower() in lower or lower in c.name.lower():
+            return c.id
+
+    return default_category_id
+
+
 def execute_wallet_selection(
     db: Session,
     bot_token: str,
@@ -512,7 +567,7 @@ def execute_wallet_selection(
     tg_username: str,
     tg_user_id: int
 ) -> dict:
-    """Check wallet balance, deduct funds, and record final receipt transaction."""
+    """Check wallet balance, deduct funds, and record receipt transactions one-by-one per item."""
     total_amount = Decimal(str(pending["total_amount"]))
     acc_balance = target_account.current_balance or Decimal("0")
 
@@ -538,27 +593,23 @@ def execute_wallet_selection(
         send_telegram_message(bot_token, chat_id, warn_msg, reply_markup=keyboard)
         return {"status": "insufficient_wallet_balance"}
 
-    # 2. Balance is sufficient: Deduct and record transaction
+    # 2. Balance is sufficient: Deduct wallet balance
     target_account.current_balance -= total_amount
 
-    items = pending.get("items") or []
-    notes_lines = []
-    if items:
-        for it in items:
-            q = it.get("qty", 1)
-            u = it.get("unit_price")
-            t = it.get("total_price")
-            if q > 1 and u:
-                notes_lines.append(f"{it.get('name')} {q}x @{format_rupiah(u)} = {format_rupiah(t)}")
-            else:
-                notes_lines.append(f"{it.get('name')} = {format_rupiah(t or u or 0)}")
+    # Fetch available categories for auto-matching item categories
+    tenant_categories = db.execute(
+        select(Category).where(
+            Category.tenant_id == tg_chat.tenant_id,
+            Category.deleted_at.is_(None)
+        )
+    ).scalars().all()
 
-    taxes = pending.get("taxes") or []
-    for tx_item in taxes:
-        notes_lines.append(f"{tx_item.get('name')}: {format_rupiah(tx_item.get('amount', 0))}")
-
-    notes_breakdown = " | ".join(notes_lines) if notes_lines else f"Total: {format_rupiah(total_amount)}"
-    full_notes = f"Struk dipindai otomatis via Telegram OCR (@{tg_username or tg_user_id}): {notes_breakdown}"
+    default_cat_id = None
+    if pending.get("category_id"):
+        try:
+            default_cat_id = uuid.UUID(pending["category_id"])
+        except Exception:
+            pass
 
     tx_date_raw = pending.get("transaction_date")
     try:
@@ -566,38 +617,150 @@ def execute_wallet_selection(
     except Exception:
         tx_date = datetime.now(timezone.utc)
 
-    cat_id = None
-    if pending.get("category_id"):
-        try:
-            cat_id = uuid.UUID(pending["category_id"])
-        except Exception:
-            pass
+    merchant_name = pending.get("merchant_name") or "Struk Belanja"
+    receipt_url = pending.get("receipt_url")
 
-    new_tx = Transaction(
-        tenant_id=tg_chat.tenant_id,
-        account_id=target_account.id,
-        category_id=cat_id,
-        amount=total_amount,
-        transaction_type="EXPENSE",
-        transaction_date=tx_date,
-        source="TELEGRAM",
-        status="COMPLETED",
-        description=pending.get("merchant_name") or "Struk Belanja",
-        receipt_url=pending.get("receipt_url"),
-        notes=full_notes,
-        metadata_json={
-            "telegram_chat_id": chat_id,
-            "telegram_user_id": tg_user_id,
-            "telegram_username": tg_username,
-            "ocr_engine": "tesseract_local",
-            "merchant": pending.get("merchant_name"),
-            "items": items,
-            "taxes": taxes,
-            "receipt_url": pending.get("receipt_url")
-        },
-        created_by=tg_account.user_id
-    )
-    db.add(new_tx)
+    items = pending.get("items") or []
+    taxes = pending.get("taxes") or []
+    created_txs: List[Transaction] = []
+
+    if items:
+        # User requested: create transaction one by one per item, NOT just grand total!
+        total_items_recorded = Decimal("0")
+
+        for it in items:
+            raw_name = (it.get("name") or "Item Belanja").strip()
+            qty = max(1, int(it.get("qty", 1)))
+            unit_price_raw = it.get("unit_price")
+            total_price_raw = it.get("total_price")
+
+            if total_price_raw is not None and Decimal(str(total_price_raw)) > 0:
+                item_amt = Decimal(str(total_price_raw))
+                unit_amt = Decimal(str(unit_price_raw)) if unit_price_raw else (item_amt / qty)
+            elif unit_price_raw is not None and Decimal(str(unit_price_raw)) > 0:
+                unit_amt = Decimal(str(unit_price_raw))
+                item_amt = unit_amt * qty
+            else:
+                continue
+
+            item_cat_id = match_item_to_category(raw_name, tenant_categories, default_cat_id)
+            desc = f"{raw_name} ({qty}x)" if qty > 1 else raw_name
+            item_notes = (
+                f"Item dari struk {merchant_name} (Qty: {qty} @ {format_rupiah(unit_amt)}) | "
+                f"Dicatat via Telegram OCR (@{tg_username or tg_user_id})"
+                if qty > 1 else
+                f"Item dari struk {merchant_name} | Dicatat via Telegram OCR (@{tg_username or tg_user_id})"
+            )
+
+            tx_item = Transaction(
+                tenant_id=tg_chat.tenant_id,
+                account_id=target_account.id,
+                category_id=item_cat_id,
+                amount=item_amt,
+                transaction_type="EXPENSE",
+                transaction_date=tx_date,
+                source="TELEGRAM",
+                status="COMPLETED",
+                description=desc,
+                receipt_url=receipt_url,
+                notes=item_notes,
+                metadata_json={
+                    "telegram_chat_id": chat_id,
+                    "telegram_user_id": tg_user_id,
+                    "telegram_username": tg_username,
+                    "ocr_engine": "tesseract_local",
+                    "merchant": merchant_name,
+                    "item_name": raw_name,
+                    "qty": qty,
+                    "unit_price": float(unit_amt),
+                    "is_receipt_item": True,
+                    "receipt_url": receipt_url
+                },
+                created_by=tg_account.user_id
+            )
+            db.add(tx_item)
+            created_txs.append(tx_item)
+            total_items_recorded += item_amt
+
+        # Add taxes / service charges if any
+        for tx_item in taxes:
+            tax_name = tx_item.get("name") or "Pajak / PB1"
+            tax_amt = Decimal(str(tx_item.get("amount") or 0))
+            if tax_amt > 0:
+                tax_cat_id = match_item_to_category("pajak", tenant_categories, default_cat_id)
+                tax_tx = Transaction(
+                    tenant_id=tg_chat.tenant_id,
+                    account_id=target_account.id,
+                    category_id=tax_cat_id,
+                    amount=tax_amt,
+                    transaction_type="EXPENSE",
+                    transaction_date=tx_date,
+                    source="TELEGRAM",
+                    status="COMPLETED",
+                    description=f"{tax_name} ({merchant_name})",
+                    receipt_url=receipt_url,
+                    notes=f"{tax_name} dari struk {merchant_name} | Dicatat via Telegram OCR (@{tg_username or tg_user_id})",
+                    metadata_json={
+                        "telegram_chat_id": chat_id,
+                        "merchant": merchant_name,
+                        "is_receipt_tax": True,
+                        "receipt_url": receipt_url
+                    },
+                    created_by=tg_account.user_id
+                )
+                db.add(tax_tx)
+                created_txs.append(tax_tx)
+                total_items_recorded += tax_amt
+
+        # If there's an unallocated positive difference between total_amount and recorded items
+        diff = total_amount - total_items_recorded
+        if diff > Decimal("0"):
+            diff_tx = Transaction(
+                tenant_id=tg_chat.tenant_id,
+                account_id=target_account.id,
+                category_id=default_cat_id,
+                amount=diff,
+                transaction_type="EXPENSE",
+                transaction_date=tx_date,
+                source="TELEGRAM",
+                status="COMPLETED",
+                description=f"Biaya Lainnya / Pembulatan ({merchant_name})",
+                receipt_url=receipt_url,
+                notes=f"Penyesuaian selisih struk {merchant_name} dengan total kasir | Telegram OCR",
+                metadata_json={
+                    "telegram_chat_id": chat_id,
+                    "merchant": merchant_name,
+                    "is_receipt_rounding": True
+                },
+                created_by=tg_account.user_id
+            )
+            db.add(diff_tx)
+            created_txs.append(diff_tx)
+
+    # Fallback if no items could be parsed individually from receipt
+    if not created_txs:
+        single_tx = Transaction(
+            tenant_id=tg_chat.tenant_id,
+            account_id=target_account.id,
+            category_id=default_cat_id,
+            amount=total_amount,
+            transaction_type="EXPENSE",
+            transaction_date=tx_date,
+            source="TELEGRAM",
+            status="COMPLETED",
+            description=merchant_name,
+            receipt_url=receipt_url,
+            notes=f"Struk dipindai otomatis via Telegram OCR (@{tg_username or tg_user_id})",
+            metadata_json={
+                "telegram_chat_id": chat_id,
+                "merchant": merchant_name,
+                "ocr_engine": "tesseract_local",
+                "receipt_url": receipt_url
+            },
+            created_by=tg_account.user_id
+        )
+        db.add(single_tx)
+        created_txs.append(single_tx)
 
     # Reset chat state back to IDLE
     tg_chat.current_state = "IDLE"
@@ -606,21 +769,30 @@ def execute_wallet_selection(
 
     db.commit()
 
+    # Format detailed confirmation message
+    item_rows = []
+    for tx in created_txs:
+        item_rows.append(f"• {tx.description}: <b>{format_rupiah(tx.amount)}</b>")
+    items_summary_text = "\n".join(item_rows)
+
     success_msg = (
-        f"✅ <b>Transaksi Berhasil Dicatat!</b>\n\n"
-        f"🏪 Toko/Merchant: <b>{pending.get('merchant_name')}</b>\n"
-        f"💸 Total Belanja: <b>{format_rupiah(total_amount)}</b> (Pengeluaran 🔴)\n"
-        f"💳 Dompet: <b>{target_account.name}</b>\n"
+        f"✅ <b>Struk Berhasil Dicatat ({len(created_txs)} Transaksi)!</b>\n\n"
+        f"🏪 Toko/Merchant: <b>{merchant_name}</b>\n"
+        f"💳 Dompet: <b>{target_account.name}</b>\n\n"
+        f"📋 <b>Rincian per Item:</b>\n"
+        f"{items_summary_text}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 Sisa Saldo <b>{target_account.name}</b>: <b>{format_rupiah(target_account.current_balance)}</b>\n\n"
-        f"📎 <i>Foto struk tersimpan aman di transaksi web!</i>"
+        f"💸 <b>Total Terpotong:</b> <b>{format_rupiah(total_amount)}</b> (Pengeluaran 🔴)\n"
+        f"💰 <b>Sisa Saldo {target_account.name}:</b> <b>{format_rupiah(target_account.current_balance)}</b>\n\n"
+        f"📎 <i>Foto struk tersimpan aman di setiap transaksi web!</i>"
     )
     send_telegram_message(bot_token, chat_id, success_msg)
     return {
         "status": "receipt_confirmed_and_recorded",
-        "tx_id": str(new_tx.id),
+        "tx_count": len(created_txs),
+        "tx_ids": [str(tx.id) for tx in created_txs],
         "account_id": str(target_account.id),
-        "amount": float(total_amount)
+        "total_amount": float(total_amount)
     }
 
 
@@ -1307,6 +1479,95 @@ def handle_telegram_update(update_data: dict, db: Session, bot_token: str) -> di
             )
             send_telegram_message(bot_token, chat_id, reply_text)
             return {"status": "receipt_unclear_total"}
+
+    # Check for multi-line transaction entry (e.g. user typed multiple items separated by newlines)
+    text_lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+    if len(text_lines) > 1:
+        parsed_batch = []
+        for line in text_lines:
+            p = parse_financial_input(line, categories, accounts)
+            if p and p.get("amount"):
+                parsed_batch.append((line, p))
+
+        if len(parsed_batch) > 1:
+            batch_txs = []
+            total_batch_amount = Decimal("0")
+            primary_account = None
+
+            for line_str, p in parsed_batch:
+                tgt_acc = db.execute(select(Account).where(Account.id == p["account_id"])).scalar_one_or_none() or accounts[0]
+                primary_account = tgt_acc
+                amt = p["amount"]
+                if p["type"] == "INCOME":
+                    tgt_acc.current_balance += amt
+                else:
+                    tgt_acc.current_balance -= amt
+                    total_batch_amount += amt
+
+                it_title = p.get("item_name") or p["description"]
+                it_qty = p.get("qty", 1)
+                it_desc = p["description"]
+                if it_qty > 1 and f"({it_qty}x)" not in it_desc:
+                    it_desc = f"{it_desc} ({it_qty}x)"
+
+                tx_row = Transaction(
+                    tenant_id=tenant_id,
+                    account_id=tgt_acc.id,
+                    category_id=p["category_id"],
+                    amount=amt,
+                    transaction_type=p["type"],
+                    transaction_date=p.get("transaction_date") or datetime.now(timezone.utc),
+                    source="TELEGRAM",
+                    status="COMPLETED",
+                    description=it_desc,
+                    notes=f"Dicatat via Telegram (@{tg_username or tg_user_id}): \"{line_str}\"",
+                    metadata_json={
+                        "telegram_chat_id": chat_id,
+                        "telegram_user_id": tg_user_id,
+                        "raw_input": line_str,
+                        "parsed_by": "telegram_smart_parser_multiline"
+                    },
+                    created_by=user.id
+                )
+                db.add(tx_row)
+                batch_txs.append(tx_row)
+
+            # Save chat log & commit
+            tg_chat = db.execute(
+                select(TelegramChat).where(
+                    TelegramChat.telegram_account_id == tg_account.id,
+                    TelegramChat.chat_id == chat_id
+                )
+            ).scalar_one_or_none()
+            if tg_chat:
+                tg_chat.last_active_at = datetime.now(timezone.utc)
+                msg_record = TelegramMessage(
+                    telegram_chat_id=tg_chat.id,
+                    telegram_message_id=message.get("message_id", 0),
+                    direction="INCOMING",
+                    raw_text=raw_text,
+                    parsed_intent="RECORD_MULTIPLE_EXPENSE",
+                    status="PROCESSED"
+                )
+                db.add(msg_record)
+
+            db.commit()
+
+            summary_lines = [f"• {t.description}: <b>{format_rupiah(t.amount)}</b>" for t in batch_txs]
+            acc_name = primary_account.name if primary_account else "Dompet"
+            acc_bal = format_rupiah(primary_account.current_balance) if primary_account else ""
+
+            reply_text = (
+                f"✅ <b>{len(batch_txs)} Transaksi Berhasil Dicatat!</b>\n\n"
+                f"📋 <b>Rincian per Item:</b>\n" + "\n".join(summary_lines) + "\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💸 <b>Total Terpotong:</b> <b>{format_rupiah(total_batch_amount)}</b> (Pengeluaran 🔴)\n"
+                f"💳 Dompet: <b>{acc_name}</b>\n"
+                f"💰 Sisa Saldo: <b>{acc_bal}</b>\n\n"
+                f"<i>Cek di: https://pantau-duit.exavolt.net/transactions</i>"
+            )
+            send_telegram_message(bot_token, chat_id, reply_text)
+            return {"status": "multiple_transactions_recorded", "count": len(batch_txs)}
 
     parsed = parse_financial_input(raw_text, categories, accounts)
 

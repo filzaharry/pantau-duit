@@ -273,7 +273,7 @@
 			</thead>
 			<tbody class="divide-y divide-slate-100 dark:divide-white/5">
 				{#if displayedItems.length > 0}
-					{#each displayedItems as item, index}
+					{#each displayedItems as item, index ((item as any)?.id ?? index)}
 						{@const absoluteIndex = (currentPage - 1) * pageSize + index}
 						{#if row}
 							{@render row(item, absoluteIndex)}

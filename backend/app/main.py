@@ -1071,16 +1071,34 @@ def update_transaction(tx_id: str, payload: TransactionUpdate, current_user: Use
 
 @app.delete("/api/transactions/{tx_id}")
 def delete_transaction(tx_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    tenant_ids = get_user_tenant_ids(current_user, db)
-    if not tenant_ids:
-        raise HTTPException(status_code=400, detail="Pengguna tidak memiliki workspace aktif")
-
     try:
         t_uuid = uuid.UUID(tx_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="ID Transaksi tidak valid")
 
-    tx = db.execute(select(Transaction).where(Transaction.id == t_uuid, Transaction.tenant_id.in_(tenant_ids))).scalar_one_or_none()
+    tenant_ids = get_user_tenant_ids(current_user, db)
+
+    # Superadmin can delete any transaction; normal user can delete within their tenant or if created by them
+    if current_user.is_superadmin:
+        tx = db.execute(select(Transaction).where(Transaction.id == t_uuid)).scalar_one_or_none()
+    elif tenant_ids:
+        tx = db.execute(
+            select(Transaction).where(
+                Transaction.id == t_uuid,
+                or_(
+                    Transaction.tenant_id.in_(tenant_ids),
+                    Transaction.created_by == current_user.id
+                )
+            )
+        ).scalar_one_or_none()
+    else:
+        tx = db.execute(
+            select(Transaction).where(
+                Transaction.id == t_uuid,
+                Transaction.created_by == current_user.id
+            )
+        ).scalar_one_or_none()
+
     if not tx:
         raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan atau bukan milik akun Anda")
 
@@ -1101,7 +1119,7 @@ def delete_transaction(tx_id: str, current_user: User = Depends(get_current_user
     tx.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {"message": "Transaksi berhasil dihapus (soft-delete) dan saldo direvert"}
+    return {"message": "Transaksi berhasil dihapus dan saldo direvert", "id": str(tx.id)}
 
 
 # =========================================================================
