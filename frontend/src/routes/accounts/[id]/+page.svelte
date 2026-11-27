@@ -443,8 +443,18 @@
 		</div>
 
 		<!-- Modals -->
-		<AddTransactionModal bind:open={isTransferModalOpen} />
-		<AddTransactionModal bind:open={isAddTxModalOpen} />
+		<AddTransactionModal
+			bind:open={isTransferModalOpen}
+			defaultAccountId={data.id}
+			lockAccount={true}
+			initialType="TRANSFER"
+		/>
+		<AddTransactionModal
+			bind:open={isAddTxModalOpen}
+			defaultAccountId={data.id}
+			lockAccount={true}
+			initialType="EXPENSE"
+		/>
 
 		<!-- Edit Account Modal with Master Dompet Preset Picker -->
 		<Modal
@@ -458,23 +468,6 @@
 					label="Nama Rekening / Dompet *"
 					placeholder="Contoh: BCA Tabungan, Dompet Harian"
 				/>
-
-				<div>
-					<label for="edit-account-type-select" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-						Tipe Akun *
-					</label>
-					<select
-						id="edit-account-type-select"
-						bind:value={editType}
-						class="w-full h-10 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
-					>
-						<option value="BANK">Rekening Bank</option>
-						<option value="E_WALLET">Dompet Digital (E-Wallet)</option>
-						<option value="CASH">Uang Tunai (Cash)</option>
-						<option value="INVESTMENT">Rekening Investasi (RDN/Crypto)</option>
-						<option value="OTHER">Lainnya / Khusus</option>
-					</select>
-				</div>
 
 				<!-- Logo & Master Dompet Picker -->
 				<div>

@@ -14,15 +14,24 @@
 
 	interface Props {
 		open?: boolean;
+		defaultAccountId?: string;
+		lockAccount?: boolean;
+		initialType?: TransactionType;
 		onclose?: () => void;
 	}
 
-	let { open = $bindable(false), onclose }: Props = $props();
+	let {
+		open = $bindable(false),
+		defaultAccountId,
+		lockAccount = false,
+		initialType,
+		onclose
+	}: Props = $props();
 
 	let transactionType = $state<TransactionType>('EXPENSE');
 	let amount = $state(0);
 	let description = $state('');
-	let accountId = $state(financialStore.accounts[0]?.id || '');
+	let accountId = $state('');
 	let destinationAccountId = $state(financialStore.accounts[1]?.id || '');
 	let categoryId = $state(financialStore.categories.find((c) => c.type === 'EXPENSE')?.id || '');
 	let transactionDate = $state(new Date().toISOString().split('T')[0]);
@@ -33,10 +42,22 @@
 	// Keep account & category in sync with active financial store data
 	$effect(() => {
 		if (open) {
-			if (!financialStore.accounts.some((a) => a.id === accountId)) {
+			if (defaultAccountId) {
+				accountId = defaultAccountId;
+			} else if (!financialStore.accounts.some((a) => a.id === accountId)) {
 				accountId = financialStore.accounts[0]?.id || '';
 				destinationAccountId = financialStore.accounts[1]?.id || '';
 			}
+
+			if (initialType) {
+				transactionType = initialType;
+			}
+
+			if (transactionType === 'TRANSFER' && destinationAccountId === accountId) {
+				const other = financialStore.accounts.find((a) => a.id !== accountId);
+				if (other) destinationAccountId = other.id;
+			}
+
 			const cat = financialStore.categories.find((c) => c.type === transactionType);
 			if (!financialStore.categories.some((c) => c.id === categoryId && c.type === transactionType)) {
 				if (cat) categoryId = cat.id;
@@ -262,38 +283,60 @@
 				{/if}
 
 				<!-- Source & Destination Account Selection (Top of Transfer) -->
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-					<SearchableSelect
-						bind:value={accountId}
-						options={accountOptions}
-						label="Dari Rekening (Asal)"
-						placeholder="Pilih rekening asal..."
-					/>
+				{#if lockAccount}
+					<div class="w-full">
+						<SearchableSelect
+							bind:value={destinationAccountId}
+							options={destAccountOptions}
+							label="Ke Rekening (Tujuan)"
+							placeholder="Pilih rekening tujuan..."
+						/>
+					</div>
+				{:else}
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						<SearchableSelect
+							bind:value={accountId}
+							options={accountOptions}
+							label="Dari Rekening (Asal)"
+							placeholder="Pilih rekening asal..."
+						/>
 
-					<SearchableSelect
-						bind:value={destinationAccountId}
-						options={destAccountOptions}
-						label="Ke Rekening (Tujuan)"
-						placeholder="Pilih rekening tujuan..."
-					/>
-				</div>
+						<SearchableSelect
+							bind:value={destinationAccountId}
+							options={destAccountOptions}
+							label="Ke Rekening (Tujuan)"
+							placeholder="Pilih rekening tujuan..."
+						/>
+					</div>
+				{/if}
 			{:else}
 				<!-- Account & Category Selection for Expense / Income -->
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-					<SearchableSelect
-						bind:value={accountId}
-						options={accountOptions}
-						label="Rekening / Dompet"
-						placeholder="Pilih rekening..."
-					/>
+				{#if lockAccount}
+					<div class="w-full">
+						<CategorySuggestSelect
+							bind:value={categoryId}
+							categoryType={transactionType === 'EXPENSE' ? 'EXPENSE' : 'INCOME'}
+							label="Kategori"
+							placeholder="Ketik atau pilih kategori..."
+						/>
+					</div>
+				{:else}
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						<SearchableSelect
+							bind:value={accountId}
+							options={accountOptions}
+							label="Rekening / Dompet"
+							placeholder="Pilih rekening..."
+						/>
 
-					<CategorySuggestSelect
-						bind:value={categoryId}
-						categoryType={transactionType === 'EXPENSE' ? 'EXPENSE' : 'INCOME'}
-						label="Kategori"
-						placeholder="Ketik atau pilih kategori..."
-					/>
-				</div>
+						<CategorySuggestSelect
+							bind:value={categoryId}
+							categoryType={transactionType === 'EXPENSE' ? 'EXPENSE' : 'INCOME'}
+							label="Kategori"
+							placeholder="Ketik atau pilih kategori..."
+						/>
+					</div>
+				{/if}
 			{/if}
 
 			<!-- Amount Input with Percentage of Account Balance -->
