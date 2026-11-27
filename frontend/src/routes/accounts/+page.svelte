@@ -601,14 +601,6 @@
 					<Plus class="w-4 h-4 mr-1.5" />
 					<span>Tambah Rekening</span>
 				</Button>
-			{:else}
-				<a
-					href="/wallet-master"
-					class="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 hover:border-[#007AFF] text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-				>
-					<ImageIcon class="w-3.5 h-3.5 text-[#007AFF]" />
-					<span>Kelola Master Dompet</span>
-				</a>
 			{/if}
 		</div>
 	</div>
@@ -637,7 +629,7 @@
 			</button>
 		</div>
 	{:else}
-		<!-- Mode 2: Per Tipe Tabungan / Aset (Aggregated by Asset Type) -->
+		<!-- Mode 2: Per Tipe Tabungan / Aset (Identical layout to AccountCard, pure information) -->
 		{#if filteredAssetGroups.length === 0}
 			<div class="p-8 text-center rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10">
 				<p class="text-xs text-slate-500 dark:text-slate-400">Tidak ada tipe aset yang sesuai filter pencarian.</p>
@@ -666,7 +658,7 @@
 							style="background: {group.color};"
 						></div>
 
-						<!-- Card Content -->
+						<!-- Card Content (Identical structure to AccountCard) -->
 						<div class="relative z-10 flex flex-col justify-between gap-3 h-full w-full">
 							<!-- Card Top: Logo & Title -->
 							<div class="flex items-center justify-between gap-3 min-w-0">
@@ -690,7 +682,7 @@
 											{group.name}
 										</h4>
 										<span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block truncate">
-											{group.accounts.length} Dompet • {group.transactionCount} Mutasi
+											{group.category.replace('_', ' ')}
 										</span>
 									</div>
 								</div>
@@ -703,15 +695,6 @@
 								</div>
 							</div>
 
-							<!-- Wallets tags preview -->
-							<div class="flex flex-wrap gap-1.5 pt-1">
-								{#each group.accounts as acc}
-									<span class="text-[10px] px-2 py-0.5 rounded-md font-medium bg-white/70 dark:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-200/50 dark:border-white/5 truncate max-w-[150px]">
-										{acc.name}
-									</span>
-								{/each}
-							</div>
-
 							<!-- Card Balance & Status -->
 							<div
 								class="pt-2.5 border-t flex items-center justify-between"
@@ -719,7 +702,7 @@
 							>
 								<div class="flex items-center gap-1.5">
 									<span class="w-2 h-2 rounded-full" style="background-color: {group.color};"></span>
-									<span class="text-[10px] font-semibold text-slate-600 dark:text-slate-400">Total Akumulasi</span>
+									<span class="text-[10px] font-semibold text-slate-600 dark:text-slate-400">Aktif</span>
 								</div>
 								<span class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white tracking-tight">
 									{formatRupiah(group.totalBalance)}
@@ -912,18 +895,18 @@
 		{/snippet}
 	</Modal>
 
-	<!-- Detail Modal for Selected Asset Group -->
+	<!-- Detail Modal for Selected Asset Group (Read-Only Information) -->
 	<Modal
 		bind:open={isAssetDetailOpen}
-		title={selectedAssetGroup?.name || 'Rincian Aset'}
-		description="Akumulasi saldo dan riwayat mutasi aset di seluruh rekening dompet Anda"
-		maxWidth="2xl"
+		title={`Informasi ${selectedAssetGroup?.name || 'Aset'}`}
+		description="Tinjauan akumulasi saldo dan riwayat mutasi transaksi di seluruh rekening"
+		maxWidth="3xl"
 	>
 		{#if selectedAssetGroup}
-			<div class="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+			<div class="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
 				<!-- Header Card in Modal with Opacity Tint -->
 				<div
-					class="p-4 rounded-2xl border flex items-center justify-between gap-4 relative overflow-hidden"
+					class="p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden"
 					style="
 						background: linear-gradient(135deg, {hexToRgba(selectedAssetGroup.color, 0.08)} 0%, {hexToRgba(selectedAssetGroup.color, 0.18)} 100%);
 						border-color: {hexToRgba(selectedAssetGroup.color, 0.3)};
@@ -931,94 +914,105 @@
 				>
 					<div class="flex items-center gap-3.5 relative z-10 min-w-0">
 						<div
-							class="w-12 h-12 rounded-2xl flex items-center justify-center p-1.5 bg-white dark:bg-[#1E2333] border shadow-xs shrink-0"
+							class="w-12 h-12 rounded-2xl flex items-center justify-center p-2 bg-white dark:bg-[#1E2333] border shadow-xs shrink-0"
 							style="border-color: {hexToRgba(selectedAssetGroup.color, 0.3)};"
 						>
 							<img src={selectedAssetGroup.image} alt={selectedAssetGroup.name} class="w-full h-full object-contain rounded-xl" />
 						</div>
 						<div class="min-w-0">
-							<h3 class="text-base font-semibold text-slate-900 dark:text-white truncate">{selectedAssetGroup.name}</h3>
-							<span class="text-xs text-slate-500 dark:text-slate-400 block truncate">
-								Tersebar di {selectedAssetGroup.accounts.length} dompet • {selectedAssetGroup.transactionCount} mutasi
+							<div class="flex items-center gap-2">
+								<h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">{selectedAssetGroup.name}</h3>
+								<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/80 dark:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-white/10">
+									{selectedAssetGroup.category.replace('_', ' ')}
+								</span>
+							</div>
+							<span class="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
+								Terdistribusi di {selectedAssetGroup.accounts.length} dompet • Total {selectedAssetGroup.transactionCount} catatan mutasi
 							</span>
 						</div>
 					</div>
-					<div class="text-right shrink-0 relative z-10">
-						<span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Total Akumulasi</span>
-						<span class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+					<div class="text-left sm:text-right shrink-0 relative z-10 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/40">
+						<span class="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 block tracking-wider">Total Akumulasi Saldo</span>
+						<span class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
 							{formatRupiah(selectedAssetGroup.totalBalance)}
 						</span>
 					</div>
 				</div>
 
-				<!-- Contributing Wallets Breakdown -->
+				<!-- Distribution Breakdown (Purely Informational) -->
 				<div>
-					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
-						<span>Saldo per Dompet / Rekening</span>
-						<span class="text-[11px] text-slate-400 font-normal">Klik untuk buka dompet</span>
+					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2.5 flex items-center justify-between">
+						<span>Sebaran Saldo di Rekening Dompet</span>
+						<span class="text-[11px] text-slate-400 font-normal">Hanya Informasi (Read-Only)</span>
 					</h4>
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
 						{#each selectedAssetGroup.accounts as acc}
-							<a
-								href="/accounts/{acc.id}"
-								class="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 hover:border-[#007AFF] bg-slate-50/50 dark:bg-white/[0.02] hover:bg-blue-50/20 dark:hover:bg-blue-500/5 transition-all flex items-center justify-between group"
+							<div
+								class="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.02] flex items-center justify-between"
 							>
 								<div class="min-w-0 flex-1 pr-2">
-									<span class="text-xs font-semibold text-slate-900 dark:text-white truncate block group-hover:text-[#007AFF]">
+									<span class="text-xs font-semibold text-slate-900 dark:text-white truncate block">
 										{acc.name}
 									</span>
 									<span class="text-[10px] text-slate-400 block">
-										{acc.txCount} mutasi terkait
+										{acc.txCount} mutasi
 									</span>
 								</div>
 								<div class="text-right shrink-0">
-									<span class="text-xs font-semibold text-slate-900 dark:text-white block">
+									<span class="text-xs font-bold text-slate-900 dark:text-white block">
 										{formatRupiah(acc.balance)}
 									</span>
-									<span class="text-[10px] text-[#007AFF] font-medium group-hover:underline flex items-center justify-end gap-0.5">
-										<span>Buka</span>
-										<ArrowUpRight class="w-3 h-3" />
-									</span>
 								</div>
-							</a>
+							</div>
 						{/each}
 					</div>
 				</div>
 
-				<!-- Transactions Table -->
+				<!-- History Table (Purely Informational) -->
 				<div class="space-y-2">
-					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300">
-						Daftar Mutasi Transaksi Terkait ({selectedAssetGroup.transactions.length})
+					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+						<span>Tabel Riwayat Mutasi Transaksi ({selectedAssetGroup.transactions.length})</span>
 					</h4>
 					{#if selectedAssetGroup.transactions.length === 0}
-						<div class="p-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 text-center">
+						<div class="p-6 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 text-center">
 							<p class="text-xs text-slate-400">Tidak ada riwayat mutasi untuk aset ini.</p>
 						</div>
 					{:else}
 						<Table
-							columns={assetTxColumns}
+							columns={[
+								{ key: 'transaction_date', header: 'Tanggal', width: '120px', sortable: true },
+								{ key: 'account_name', header: 'Dompet / Rekening', width: '180px', sortable: true },
+								{ key: 'transaction_type', header: 'Tipe', width: '100px', sortable: true },
+								{ key: 'description', header: 'Keterangan / Catatan', sortable: true },
+								{ key: 'amount', header: 'Nominal', align: 'right', width: '140px', sortable: true }
+							]}
 							items={selectedAssetGroup.transactions}
-							pageSize={5}
-							pageSizeOptions={[5, 10, 25]}
+							pageSize={10}
+							pageSizeOptions={[10, 25, 50]}
 							defaultSortKey="transaction_date"
 							defaultSortDirection="desc"
 						>
 							{#snippet row(tx)}
-								<td class="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
+								<td class="px-3.5 py-3 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
 									{new Date(tx.transaction_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
 								</td>
-								<td class="px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
-									<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[11px]">
+								<td class="px-3.5 py-3 text-xs font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
+									<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[11px] font-medium">
 										{tx.account_name}
 									</span>
 								</td>
-								<td class="px-3 py-2.5 text-xs text-slate-700 dark:text-slate-300">
+								<td class="px-3.5 py-3 text-xs whitespace-nowrap">
+									<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {tx.transaction_type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : tx.transaction_type === 'EXPENSE' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'}">
+										{tx.transaction_type}
+									</span>
+								</td>
+								<td class="px-3.5 py-3 text-xs text-slate-700 dark:text-slate-300">
 									<span class="font-medium text-slate-900 dark:text-white block">{tx.description}</span>
 									{#if tx.notes}
-										<span class="text-[10px] text-slate-400 block truncate max-w-xs">{tx.notes}</span>
+										<span class="text-[10px] text-slate-400 block truncate max-w-sm mt-0.5">{tx.notes}</span>
 									{/if}
 								</td>
-								<td class="px-3 py-2.5 text-xs text-right font-semibold whitespace-nowrap">
+								<td class="px-3.5 py-3 text-xs text-right font-bold whitespace-nowrap">
 									<span class={tx.transaction_type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
 										{tx.transaction_type === 'INCOME' ? '+' : '-'}{formatRupiah(tx.amount)}
 									</span>
@@ -1026,10 +1020,6 @@
 							{/snippet}
 						</Table>
 					{/if}
-				</div>
-
-				<div class="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-500/5 border border-blue-200/50 dark:border-blue-500/20 text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
-					💡 <strong>Info Tipe Aset</strong>: Saldo dan transaksi di atas dikelompokkan secara otomatis dari seluruh dompet tabungan. Untuk menambah jenis instrumen baru, buka menu <a href="/wallet-master" class="text-[#007AFF] font-semibold underline">Master Dompet</a>.
 				</div>
 			</div>
 		{/if}
