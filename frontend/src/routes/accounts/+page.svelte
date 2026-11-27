@@ -914,7 +914,7 @@
 				>
 					<div class="flex items-center gap-3.5 relative z-10 min-w-0">
 						<div
-							class="w-12 h-12 rounded-2xl flex items-center justify-center p-2 bg-white dark:bg-[#1E2333] border shadow-xs shrink-0"
+							class="w-13 h-13 rounded-2xl flex items-center justify-center p-2 bg-white dark:bg-[#1E2333] border shadow-xs shrink-0"
 							style="border-color: {hexToRgba(selectedAssetGroup.color, 0.3)};"
 						>
 							<img src={selectedAssetGroup.image} alt={selectedAssetGroup.name} class="w-full h-full object-contain rounded-xl" />
@@ -927,7 +927,7 @@
 								</span>
 							</div>
 							<span class="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
-								Terdistribusi di {selectedAssetGroup.accounts.length} dompet • Total {selectedAssetGroup.transactionCount} catatan mutasi
+								Total {selectedAssetGroup.transactionCount} catatan mutasi di {selectedAssetGroup.accounts.length} dompet
 							</span>
 						</div>
 					</div>
@@ -936,35 +936,6 @@
 						<span class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
 							{formatRupiah(selectedAssetGroup.totalBalance)}
 						</span>
-					</div>
-				</div>
-
-				<!-- Distribution Breakdown (Purely Informational) -->
-				<div>
-					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2.5 flex items-center justify-between">
-						<span>Sebaran Saldo di Rekening Dompet</span>
-						<span class="text-[11px] text-slate-400 font-normal">Hanya Informasi (Read-Only)</span>
-					</h4>
-					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-						{#each selectedAssetGroup.accounts as acc}
-							<div
-								class="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.02] flex items-center justify-between"
-							>
-								<div class="min-w-0 flex-1 pr-2">
-									<span class="text-xs font-semibold text-slate-900 dark:text-white truncate block">
-										{acc.name}
-									</span>
-									<span class="text-[10px] text-slate-400 block">
-										{acc.txCount} mutasi
-									</span>
-								</div>
-								<div class="text-right shrink-0">
-									<span class="text-xs font-bold text-slate-900 dark:text-white block">
-										{formatRupiah(acc.balance)}
-									</span>
-								</div>
-							</div>
-						{/each}
 					</div>
 				</div>
 
@@ -992,31 +963,33 @@
 							defaultSortKey="transaction_date"
 							defaultSortDirection="desc"
 						>
-							{#snippet row(tx)}
-								<td class="px-3.5 py-3 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
-									{new Date(tx.transaction_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-								</td>
-								<td class="px-3.5 py-3 text-xs font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
-									<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[11px] font-medium">
-										{tx.account_name}
-									</span>
-								</td>
-								<td class="px-3.5 py-3 text-xs whitespace-nowrap">
-									<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {tx.transaction_type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : tx.transaction_type === 'EXPENSE' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'}">
-										{tx.transaction_type}
-									</span>
-								</td>
-								<td class="px-3.5 py-3 text-xs text-slate-700 dark:text-slate-300">
-									<span class="font-medium text-slate-900 dark:text-white block">{tx.description}</span>
-									{#if tx.notes}
-										<span class="text-[10px] text-slate-400 block truncate max-w-sm mt-0.5">{tx.notes}</span>
-									{/if}
-								</td>
-								<td class="px-3.5 py-3 text-xs text-right font-bold whitespace-nowrap">
-									<span class={tx.transaction_type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-										{tx.transaction_type === 'INCOME' ? '+' : '-'}{formatRupiah(tx.amount)}
-									</span>
-								</td>
+							{#snippet row(tx, index)}
+								<tr class="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
+									<td class="p-3.5 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
+										{new Date(tx.transaction_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+									</td>
+									<td class="p-3.5 text-xs font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
+										<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[11px] font-medium">
+											{tx.account_name}
+										</span>
+									</td>
+									<td class="p-3.5 text-xs whitespace-nowrap">
+										<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold {tx.transaction_type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : tx.transaction_type === 'EXPENSE' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'}">
+											{tx.transaction_type}
+										</span>
+									</td>
+									<td class="p-3.5 text-xs text-slate-700 dark:text-slate-300">
+										<span class="font-medium text-slate-900 dark:text-white block">{tx.description}</span>
+										{#if tx.notes}
+											<span class="text-[10px] text-slate-400 block truncate max-w-sm mt-0.5">{tx.notes}</span>
+										{/if}
+									</td>
+									<td class="p-3.5 text-xs text-right font-bold whitespace-nowrap">
+										<span class={tx.transaction_type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+											{tx.transaction_type === 'INCOME' ? '+' : '-'}{formatRupiah(tx.amount)}
+										</span>
+									</td>
+								</tr>
 							{/snippet}
 						</Table>
 					{/if}
