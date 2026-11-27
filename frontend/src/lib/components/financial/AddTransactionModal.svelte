@@ -345,9 +345,10 @@
 			<AmountInput
 				bind:value={amount}
 				label="Jumlah Nominal"
-				referenceBalance={transactionType === 'INCOME' ? financialStore.totalBalance : Number(selectedAccount?.current_balance || selectedAccount?.balance || 0)}
-				balanceLabel={selectedAccount ? `Saldo ${selectedAccount.name}` : 'Saldo Tabungan'}
+				referenceBalance={Number(selectedAccount?.current_balance ?? selectedAccount?.balance ?? 0)}
+				balanceLabel={selectedAccount ? `Saldo ${selectedAccount.name}` : 'Saldo Dompet'}
 				showBalance={true}
+				showPercentageChips={transactionType !== 'INCOME'}
 			/>
 
 			<!-- Description -->

@@ -27,9 +27,9 @@
 		onchange
 	}: Props = $props();
 
-	// If referenceBalance is provided, use it; otherwise fallback to financialStore.totalBalance
+	// If referenceBalance is provided, use it; otherwise 0
 	const activeBalance = $derived(
-		referenceBalance !== undefined ? referenceBalance : financialStore.totalBalance
+		referenceBalance !== undefined ? referenceBalance : 0
 	);
 
 	function handleInput(e: Event) {
@@ -61,7 +61,7 @@
 	{#if label}
 		<div class="flex items-center justify-between gap-1.5">
 			<span class="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</span>
-			{#if showBalance && activeBalance > 0}
+			{#if showBalance && activeBalance !== undefined}
 				<div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
 					<Wallet class="w-3.5 h-3.5 text-[#007AFF] dark:text-[#0A84FF]" />
 					<span>{balanceLabel}:</span>

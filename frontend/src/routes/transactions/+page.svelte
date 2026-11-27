@@ -566,8 +566,8 @@
 			<AmountInput
 				bind:value={editAmount}
 				label="Nominal Transaksi (Rp)"
-				referenceBalance={editingAccount?.current_balance ?? financialStore.totalBalance}
-				balanceLabel={editingAccount ? `Saldo ${editingAccount.name}` : 'Saldo Tabungan'}
+				referenceBalance={Number(editingAccount?.current_balance ?? editingAccount?.balance ?? 0)}
+				balanceLabel={editingAccount ? `Saldo ${editingAccount.name}` : 'Saldo Dompet'}
 			/>
 
 			{#if editingTransaction && editingTransaction.transaction_type !== 'TRANSFER'}
