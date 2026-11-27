@@ -1,13 +1,9 @@
 <script lang="ts">
-	import { ChevronDown, Search, Check } from 'lucide-svelte';
+	import { ChevronDown, Search, Check, Plus } from 'lucide-svelte';
 
 	export interface Option {
 		value: string;
 		label: string;
-		sublabel?: string;
-		image?: string;
-		badge?: string;
-		extra?: string;
 	}
 
 	interface Props {
@@ -17,6 +13,8 @@
 		placeholder?: string;
 		error?: string;
 		disabled?: boolean;
+		allowCreate?: boolean;
+		onCreate?: (name: string) => Promise<string | void> | string | void;
 	}
 
 	let {
@@ -25,182 +23,232 @@
 		label,
 		placeholder = 'Pilih opsi...',
 		error,
-		disabled = false
+		disabled = false,
+		allowCreate = false,
+		onCreate
 	}: Props = $props();
 
 	let isOpen = $state(false);
 	let searchQuery = $state('');
-	let containerEl: HTMLElement | null = $state(null);
-	let searchInputEl: HTMLInputElement | null = $state(null);
-	let openUpwards = $state(false);
+	let triggerEl = $state<HTMLButtonElement | null>(null);
+	let searchInputEl = $state<HTMLInputElement | null>(null);
+	let dropdownEl = $state<HTMLDivElement | null>(null);
+	let isCreating = $state(false);
 
-	// Currently selected option object
+	let coords = $state({
+		top: 0,
+		left: 0,
+		width: 0,
+		maxHeight: 260,
+		openUpwards: false
+	});
+
 	const selectedOption = $derived(options.find((opt) => opt.value === value));
 
-	// Filtered options based on search query
 	const filteredOptions = $derived(
 		options.filter((opt) => {
 			if (!searchQuery.trim()) return true;
-			const q = searchQuery.toLowerCase().trim();
-			return (
-				opt.label.toLowerCase().includes(q) ||
-				(opt.sublabel && opt.sublabel.toLowerCase().includes(q))
-			);
+			return opt.label.toLowerCase().includes(searchQuery.toLowerCase().trim());
 		})
 	);
 
-	// Load with max limit of 10 items as requested
-	const displayedOptions = $derived(filteredOptions.slice(0, 10));
+	const exactMatch = $derived(
+		options.some(
+			(opt) => opt.label.toLowerCase().trim() === searchQuery.toLowerCase().trim()
+		)
+	);
+
+	function updateCoords() {
+		if (!triggerEl) return;
+		const rect = triggerEl.getBoundingClientRect();
+		const viewportHeight = window.innerHeight;
+		const viewportWidth = window.innerWidth;
+
+		const spaceBelow = viewportHeight - rect.bottom - 16;
+		const spaceAbove = rect.top - 16;
+
+		// If space below is less than 180px and space above has more room, open upwards
+		const openUpwards = spaceBelow < 180 && spaceAbove > spaceBelow;
+		const availableSpace = openUpwards ? spaceAbove : spaceBelow;
+		const maxHeight = Math.min(260, Math.max(140, availableSpace));
+
+		const width = Math.min(rect.width, viewportWidth - 24);
+		const left = Math.max(12, Math.min(rect.left, viewportWidth - width - 12));
+
+		coords = {
+			top: openUpwards ? rect.top - 6 : rect.bottom + 6,
+			left,
+			width,
+			maxHeight,
+			openUpwards
+		};
+	}
 
 	function toggleOpen() {
 		if (disabled) return;
 		isOpen = !isOpen;
 		if (isOpen) {
 			searchQuery = '';
-			if (containerEl) {
-				const dialogEl = containerEl.closest('[role="dialog"]');
-				const bottomBoundary = dialogEl
-					? dialogEl.getBoundingClientRect().bottom
-					: window.innerHeight;
-				const spaceBelow = bottomBoundary - containerEl.getBoundingClientRect().bottom;
-				openUpwards = spaceBelow < 250;
-			}
-			// Auto focus input on next tick
+			updateCoords();
 			setTimeout(() => {
+				updateCoords();
 				searchInputEl?.focus();
-			}, 50);
+			}, 30);
 		}
 	}
 
-	function selectOption(val: string) {
-		value = val;
+	function closeDropdown() {
 		isOpen = false;
 		searchQuery = '';
 	}
 
-	function handleClickOutside(event: MouseEvent) {
-		if (containerEl && !containerEl.contains(event.target as Node)) {
-			isOpen = false;
+	function selectOption(val: string) {
+		value = val;
+		closeDropdown();
+	}
+
+	async function handleCreate() {
+		const name = searchQuery.trim();
+		if (!name || !onCreate) return;
+		isCreating = true;
+		try {
+			const newId = await onCreate(name);
+			if (newId) {
+				value = newId;
+			}
+			closeDropdown();
+		} finally {
+			isCreating = false;
 		}
 	}
 
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && isOpen) {
-			isOpen = false;
+	function handleWindowClick(e: MouseEvent) {
+		if (!isOpen) return;
+		const target = e.target as Node;
+		if (triggerEl?.contains(target) || dropdownEl?.contains(target)) {
+			return;
+		}
+		closeDropdown();
+	}
+
+	function handleWindowScroll() {
+		if (isOpen) {
+			if (!triggerEl) return;
+			const rect = triggerEl.getBoundingClientRect();
+			// Auto close if trigger scrolled out of viewport
+			if (rect.bottom < 0 || rect.top > window.innerHeight) {
+				closeDropdown();
+			} else {
+				updateCoords();
+			}
+		}
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && isOpen) {
+			closeDropdown();
 		}
 	}
 </script>
 
-<svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
+<svelte:window
+	onclick={handleWindowClick}
+	onscroll={handleWindowScroll}
+	onresize={handleWindowScroll}
+	onkeydown={handleKeydown}
+/>
 
-<div class="relative w-full" bind:this={containerEl}>
+<div class="relative w-full">
 	{#if label}
 		<span class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
 			{label}
 		</span>
 	{/if}
 
-	<!-- Custom Trigger Button -->
+	<!-- Custom Trigger Button (Clean plain text, chevron) -->
 	<button
 		type="button"
+		bind:this={triggerEl}
 		{disabled}
 		onclick={toggleOpen}
 		class="w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs sm:text-sm bg-white dark:bg-[#151E2E] border border-slate-200/80 dark:border-white/10 hover:border-[#007AFF] text-left transition-colors focus:outline-none focus:ring-1 focus:ring-[#007AFF]/20 disabled:opacity-50 disabled:cursor-not-allowed"
 	>
-		<div class="flex items-center gap-2 min-w-0 flex-1 mr-2">
-			{#if selectedOption?.image}
-				<div class="w-5 h-5 rounded-md bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
-					<img src={selectedOption.image} alt="" class="w-full h-full object-contain rounded" />
-				</div>
-			{/if}
-			<span class="truncate font-medium {selectedOption ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}">
-				{selectedOption ? selectedOption.label : placeholder}
-			</span>
-			{#if selectedOption?.badge}
-				<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 dark:bg-white/10 text-slate-500 shrink-0">
-					{selectedOption.badge}
-				</span>
-			{/if}
-			{#if selectedOption?.extra}
-				<span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 ml-auto shrink-0">
-					{selectedOption.extra}
-				</span>
-			{/if}
-		</div>
+		<span class="truncate {selectedOption ? 'font-medium text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}">
+			{selectedOption ? selectedOption.label : placeholder}
+		</span>
 		<ChevronDown
-			class="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 ml-1 transition-transform duration-200 {isOpen ? 'rotate-180 text-[#007AFF]' : ''}"
+			class="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 ml-2 transition-transform duration-200 {isOpen ? 'rotate-180 text-[#007AFF]' : ''}"
 		/>
 	</button>
 
-	<!-- Custom Search-Suggest Popover -->
+	<!-- Fixed Floating Popover: never cut off by modal body/footer -->
 	{#if isOpen}
 		<div
-			class="absolute left-0 {openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} z-50 w-full min-w-[240px] p-2 rounded-2xl bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200 dark:border-white/10 animate-in fade-in zoom-in-95 duration-150"
+			bind:this={dropdownEl}
+			style="position: fixed; left: {coords.left}px; {coords.openUpwards ? `bottom: ${window.innerHeight - coords.top}px` : `top: ${coords.top}px`}; width: {coords.width}px; max-height: {coords.maxHeight}px; z-index: 9999;"
+			class="flex flex-col rounded-xl bg-white dark:bg-[#151926] border border-slate-200 dark:border-white/10 shadow-2xl p-1.5 animate-in fade-in duration-100"
 		>
-			<!-- Search input header -->
-			<div class="relative mb-2">
+			<!-- Search suggestion input header -->
+			<div class="relative mb-1.5 shrink-0">
 				<Search class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 				<input
 					type="text"
 					bind:this={searchInputEl}
 					bind:value={searchQuery}
 					placeholder="Cari..."
+					onkeydown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault();
+							if (filteredOptions.length > 0) {
+								selectOption(filteredOptions[0].value);
+							} else if (allowCreate && !exactMatch && searchQuery.trim()) {
+								handleCreate();
+							}
+						}
+					}}
 					class="w-full h-8 pl-8 pr-3 rounded-lg bg-slate-50 dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 border border-slate-200/60 dark:border-white/10 outline-none focus:border-[#007AFF]"
 				/>
 			</div>
 
-			<!-- Options List with Max 10 items and overflow-y-auto -->
-			<div class="max-h-52 overflow-y-auto space-y-0.5 pr-0.5">
-				{#if displayedOptions.length === 0}
-					<div class="py-4 text-center text-xs text-slate-400">
+			<!-- Options List: EXACTLY 1 plain text per row, no color, no image -->
+			<div class="overflow-y-auto space-y-0.5 pr-0.5 flex-1 min-h-0">
+				{#if filteredOptions.length === 0 && (!allowCreate || exactMatch || !searchQuery.trim())}
+					<div class="py-3 text-center text-xs text-slate-400">
 						Tidak ada hasil ditemukan
 					</div>
 				{:else}
-					{#each displayedOptions as opt}
+					{#each filteredOptions as opt (opt.value)}
 						{@const isSelected = opt.value === value}
 						<button
 							type="button"
 							onclick={() => selectOption(opt.value)}
-							class="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs text-left transition-colors {isSelected
-								? 'bg-[#007AFF]/10 text-[#007AFF] font-semibold'
+							class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs text-left transition-colors cursor-pointer {isSelected
+								? 'bg-[#007AFF]/10 text-[#007AFF] font-medium'
 								: 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5'}"
 						>
-							<div class="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
-								{#if opt.image}
-									<div class="w-7 h-7 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
-										<img src={opt.image} alt="" class="w-full h-full object-contain rounded" />
-									</div>
-								{/if}
-								<div class="min-w-0 flex-1">
-									<div class="flex items-center gap-1.5">
-										<span class="truncate block font-medium">{opt.label}</span>
-										{#if opt.badge}
-											<span class="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 dark:bg-white/10 text-slate-500 shrink-0">
-												{opt.badge}
-											</span>
-										{/if}
-									</div>
-									{#if opt.extra}
-										<span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">{opt.extra}</span>
-									{:else if opt.sublabel}
-										<span class="text-[10px] text-slate-400 block truncate">{opt.sublabel}</span>
-									{/if}
-								</div>
-							</div>
+							<span class="truncate block">{opt.label}</span>
 							{#if isSelected}
-								<Check class="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
+								<Check class="w-3.5 h-3.5 text-[#007AFF] shrink-0 ml-2" />
 							{/if}
 						</button>
 					{/each}
 				{/if}
-			</div>
 
-			<!-- Hint if there are more than 10 matches -->
-			{#if filteredOptions.length > 10}
-				<div class="pt-1.5 mt-1 border-t border-slate-100 dark:border-white/5 text-[10px] text-slate-400 text-center">
-					Menampilkan 10 dari {filteredOptions.length} pilihan
-				</div>
-			{/if}
+				<!-- Plain text quick create option -->
+				{#if allowCreate && !exactMatch && searchQuery.trim()}
+					<button
+						type="button"
+						onclick={handleCreate}
+						disabled={isCreating}
+						class="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-left text-[#007AFF] hover:bg-[#007AFF]/10 font-medium transition-colors cursor-pointer border border-dashed border-[#007AFF]/30 mt-1"
+					>
+						<Plus class="w-3.5 h-3.5 shrink-0" />
+						<span class="truncate">
+							{isCreating ? 'Menyimpan...' : `Tambah "${searchQuery.trim()}"`}
+						</span>
+					</button>
+				{/if}
+			</div>
 		</div>
 	{/if}
 

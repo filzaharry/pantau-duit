@@ -8,7 +8,6 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
-	import { getWalletImage } from '$lib/utils/walletIcons';
 	import { formatRupiah } from '$lib/utils/formatters';
 	import type { TransactionType } from '$lib/types';
 	import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Wallet, Plus, AlertCircle } from 'lucide-svelte';
@@ -63,15 +62,11 @@
 		}
 	});
 
-	// Select options with search suggest metadata
+	// Select options: 1 clean text per row, no color, no image, with search suggestion
 	const accountOptions = $derived(
 		financialStore.accounts.map((acc) => ({
 			value: acc.id,
-			label: acc.name,
-			sublabel: acc.type.replace('_', ' '),
-			badge: acc.type.replace('_', ' '),
-			image: getWalletImage(acc.icon, acc.type),
-			extra: formatRupiah(acc.current_balance || acc.balance || 0)
+			label: acc.name
 		}))
 	);
 
@@ -80,11 +75,7 @@
 			.filter((acc) => acc.id !== accountId)
 			.map((acc) => ({
 				value: acc.id,
-				label: acc.name,
-				sublabel: acc.type.replace('_', ' '),
-				badge: acc.type.replace('_', ' '),
-				image: getWalletImage(acc.icon, acc.type),
-				extra: formatRupiah(acc.current_balance || acc.balance || 0)
+				label: acc.name
 			}))
 	);
 

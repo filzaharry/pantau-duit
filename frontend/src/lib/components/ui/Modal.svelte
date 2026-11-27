@@ -50,7 +50,7 @@
 	>
 		<!-- Modal Container: Bottom Sheet on Mobile (<640px) / Centered Dialog on Desktop (>=640px) -->
 		<div
-			class="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] rounded-t-[28px] sm:rounded-3xl border-t sm:border border-slate-200/80 dark:border-white/10 overflow-hidden animate-in fade-in slide-in-from-bottom-6 sm:slide-in-from-bottom-2 duration-200"
+			class="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] rounded-t-[28px] sm:rounded-3xl border-t sm:border border-slate-200/80 dark:border-white/10 overflow-hidden animate-in fade-in duration-200"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby={title ? 'modal-title' : undefined}

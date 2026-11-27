@@ -121,21 +121,6 @@
 	let selectedIcon = $state('bca');
 	let formError = $state('');
 
-	const accountTypeOptions = [
-		{ value: 'BANK', label: 'Rekening Bank' },
-		{ value: 'E_WALLET', label: 'Dompet Digital (E-Wallet)' },
-		{ value: 'CASH', label: 'Uang Tunai (Cash)' },
-		{ value: 'INVESTMENT', label: 'Rekening Investasi (RDN/Crypto)' }
-	];
-
-	function onTypeChange(newType: AccountType) {
-		accountType = newType;
-		if (newType === 'BANK') selectedIcon = 'bca';
-		else if (newType === 'E_WALLET') selectedIcon = 'gopay';
-		else if (newType === 'CASH') selectedIcon = 'cash';
-		else if (newType === 'INVESTMENT') selectedIcon = 'crypto';
-	}
-
 	async function handleAddAccount() {
 		formError = '';
 		if (!accountName.trim()) {
@@ -145,7 +130,7 @@
 
 		await financialStore.addAccount({
 			name: accountName.trim(),
-			type: accountType,
+			type: accountType || 'BANK',
 			opening_balance: initialBalance,
 			account_number: accountNumber.trim(),
 			institution_name: institutionName.trim(),
@@ -364,22 +349,6 @@
 				label="Nama Rekening / Dompet *"
 				placeholder="Contoh: BCA Utama, GoPay, Dompet Harian"
 			/>
-
-			<div>
-				<label for="account-type-select" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-					Tipe Akun *
-				</label>
-				<select
-					id="account-type-select"
-					value={accountType}
-					onchange={(e) => onTypeChange((e.target as HTMLSelectElement).value as AccountType)}
-					class="w-full h-10 px-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#007AFF]"
-				>
-					{#each accountTypeOptions as opt}
-						<option value={opt.value}>{opt.label}</option>
-					{/each}
-				</select>
-			</div>
 
 			<!-- Visual Image / Badge Selection -->
 			<div>
