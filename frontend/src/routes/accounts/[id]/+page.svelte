@@ -4,7 +4,8 @@
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import { formatRupiah, formatDate } from '$lib/utils/formatters';
 	import { getWalletImage, WALLET_PRESETS } from '$lib/utils/walletIcons';
-	import type { AccountType } from '$lib/types';
+	import type { AccountType, Transaction } from '$lib/types';
+	import Table, { type TableColumn } from '$lib/components/ui/Table.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -108,6 +109,22 @@
 	// Filtered transactions for this specific account
 	let txSearchQuery = $state('');
 	let txTypeFilter = $state<'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('ALL');
+	let isFilterOpen = $state(false);
+
+	const isFilterActive = $derived(txTypeFilter !== 'ALL');
+
+	function resetFilters() {
+		txTypeFilter = 'ALL';
+		isFilterOpen = false;
+	}
+
+	const txColumns: TableColumn<Transaction>[] = [
+		{ key: 'transaction_date', header: 'Tanggal', sortable: true },
+		{ key: 'description', header: 'Deskripsi / Catatan', sortable: true },
+		{ key: 'transaction_type', header: 'Kategori / Tipe', sortable: true },
+		{ key: 'amount', header: 'Nominal', align: 'right', sortable: true },
+		{ header: 'Aksi', align: 'center' }
+	];
 
 	const accountTransactions = $derived(
 		financialStore.transactions.filter((t) => {
@@ -287,120 +304,142 @@
 			</div>
 		</div>
 
-		<!-- Transaction History Section Dedicated to this Account -->
+		<!-- Transaction History Section Dedicated to this Account using Global Table -->
 		<div class="space-y-4">
-			<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-				<div>
-					<h2 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-						<History class="w-5 h-5 text-[#007AFF]" />
-						<span>Riwayat Mutasi Saldo</span>
-					</h2>
-					<p class="text-xs text-slate-500 dark:text-slate-400">
-						Seluruh catatan transaksi dan mutasi yang terkait dengan rekening {account.name}
-					</p>
+			<!-- Search and Filter Toolbar -->
+			<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+				<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
+					<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+					<input
+						type="text"
+						bind:value={txSearchQuery}
+						placeholder="Cari transaksi dompet ini..."
+						class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
+					/>
 				</div>
 
-				<!-- Search and Filter -->
 				<div class="flex items-center gap-2">
-					<div class="relative w-full sm:w-56">
-						<Search class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-						<input
-							type="text"
-							bind:value={txSearchQuery}
-							placeholder="Cari transaksi..."
-							class="w-full h-8 pl-8 pr-3 rounded-lg border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF]"
-						/>
+					<!-- Reusable Filter Popover Button -->
+					<div class="relative">
+						<Button
+							variant="ghost"
+							onclick={() => (isFilterOpen = !isFilterOpen)}
+							class="h-9 px-3 text-xs border border-slate-200/80 dark:border-white/10 {isFilterActive ? 'text-[#007AFF] border-[#007AFF]/40 bg-[#007AFF]/5' : ''}"
+						>
+							<Filter class="w-3.5 h-3.5 mr-1.5" />
+							<span>Filter</span>
+							{#if isFilterActive}
+								<span class="w-1.5 h-1.5 rounded-full bg-[#007AFF] ml-1"></span>
+							{/if}
+						</Button>
+
+						{#if isFilterOpen}
+							<button
+								type="button"
+								aria-label="Tutup filter"
+								class="fixed inset-0 z-30 cursor-default bg-transparent"
+								onclick={() => (isFilterOpen = false)}
+							></button>
+
+							<div class="absolute right-0 top-full mt-2 w-52 p-3 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 shadow-2xl z-40 space-y-3">
+								<div>
+									<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Transaksi</span>
+									<select
+										bind:value={txTypeFilter}
+										class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+									>
+										<option value="ALL">Semua Tipe</option>
+										<option value="INCOME">Pemasukan</option>
+										<option value="EXPENSE">Pengeluaran</option>
+										<option value="TRANSFER">Transfer Saldo</option>
+									</select>
+								</div>
+
+								{#if isFilterActive}
+									<div class="pt-1 border-t border-slate-100 dark:border-white/5 flex justify-end">
+										<button
+											type="button"
+											onclick={resetFilters}
+											class="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+										>
+											Reset Filter
+										</button>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 
-					<select
-						bind:value={txTypeFilter}
-						class="h-8 px-2 rounded-lg border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
+					<Button
+						variant="primary"
+						class="h-9 px-3.5 text-xs"
+						onclick={() => (isAddTxModalOpen = true)}
 					>
-						<option value="ALL">Semua Tipe</option>
-						<option value="INCOME">Pemasukan</option>
-						<option value="EXPENSE">Pengeluaran</option>
-						<option value="TRANSFER">Transfer</option>
-					</select>
+						<Plus class="w-4 h-4 mr-1.5" />
+						<span>Catat Transaksi</span>
+					</Button>
 				</div>
 			</div>
 
-			<!-- Transactions List / Table -->
-			{#if accountTransactions.length === 0}
-				<div class="p-8 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 text-center space-y-2">
-					<div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto text-slate-400">
-						<Calendar class="w-5 h-5" />
-					</div>
-					<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Belum Ada Transaksi</p>
-					<p class="text-[11px] text-slate-400 max-w-xs mx-auto">
-						Transaksi pemasukan, pengeluaran, atau transfer yang menggunakan rekening ini akan muncul di sini.
-					</p>
-				</div>
-			{:else}
-				<div class="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#151926] overflow-hidden shadow-xs">
-					<div class="overflow-x-auto">
-						<table class="w-full text-left text-xs">
-							<thead>
-								<tr class="border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01] text-slate-400 text-[10px] uppercase tracking-wider font-semibold">
-									<th class="py-3 px-4">Tanggal</th>
-									<th class="py-3 px-4">Deskripsi / Catatan</th>
-									<th class="py-3 px-4">Kategori / Tipe</th>
-									<th class="py-3 px-4 text-right">Nominal</th>
-									<th class="py-3 px-4 text-center">Aksi</th>
-								</tr>
-							</thead>
-							<tbody class="divide-y divide-slate-100 dark:divide-white/5">
-								{#each accountTransactions as tx (tx.id)}
-									{@const isSource = tx.account_id === data.id}
-									{@const isDest = tx.destination_account_id === data.id}
-									{@const isTransferIn = tx.transaction_type === 'TRANSFER' && isDest}
-									{@const isTransferOut = tx.transaction_type === 'TRANSFER' && isSource}
-									{@const isIncome = tx.transaction_type === 'INCOME' || isTransferIn}
+			<!-- Global Table Component -->
+			<Table
+				title="Riwayat Mutasi Saldo"
+				subtitle="Daftar transaksi dan mutasi rekening {account.name}"
+				icon={History}
+				badge="{accountTransactions.length} Transaksi"
+				columns={txColumns}
+				items={accountTransactions}
+				emptyMessage="Belum ada transaksi di dompet ini"
+				emptyDescription="Transaksi pemasukan, pengeluaran, atau transfer yang menggunakan rekening ini akan muncul di sini."
+			>
+				{#snippet row(tx, index)}
+					{@const isSource = tx.account_id === data.id}
+					{@const isDest = tx.destination_account_id === data.id}
+					{@const isTransferIn = tx.transaction_type === 'TRANSFER' && isDest}
+					{@const isTransferOut = tx.transaction_type === 'TRANSFER' && isSource}
+					{@const isIncome = tx.transaction_type === 'INCOME' || isTransferIn}
 
-									<tr class="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
-										<td class="py-3 px-4 text-slate-500 whitespace-nowrap">
-											{formatDate(tx.transaction_date)}
-										</td>
-										<td class="py-3 px-4 font-medium text-slate-900 dark:text-white">
-											<span class="block truncate max-w-xs">{tx.description}</span>
-											{#if tx.transaction_type === 'TRANSFER'}
-												<span class="text-[10px] text-slate-400 block mt-0.5">
-													{isTransferIn ? 'Dari: ' + (tx.account_name || 'Rekening Asal') : 'Ke: ' + (tx.destination_account_name || 'Rekening Tujuan')}
-												</span>
-											{/if}
-										</td>
-										<td class="py-3 px-4 whitespace-nowrap">
-											<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold {isIncome ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'}">
-												{#if isIncome}
-													<ArrowDownLeft class="w-3 h-3" />
-												{:else}
-													<ArrowUpRight class="w-3 h-3" />
-												{/if}
-												<span>{tx.transaction_type}</span>
-											</span>
-											{#if tx.category_name}
-												<span class="text-[11px] text-slate-500 dark:text-slate-400 ml-1.5">{tx.category_name}</span>
-											{/if}
-										</td>
-										<td class="py-3 px-4 text-right font-semibold whitespace-nowrap {isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}">
-											{isIncome ? '+' : '-'}{formatRupiah(tx.amount)}
-										</td>
-										<td class="py-3 px-4 text-center whitespace-nowrap">
-											<button
-												type="button"
-												onclick={() => financialStore.deleteTransaction(tx.id)}
-												class="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-												title="Hapus Transaksi"
-											>
-												<Trash2 class="w-3.5 h-3.5" />
-											</button>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				</div>
-			{/if}
+					<tr class="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
+						<td class="p-3.5 text-slate-500 whitespace-nowrap">
+							{formatDate(tx.transaction_date)}
+						</td>
+						<td class="p-3.5 font-medium text-slate-900 dark:text-white">
+							<span class="block truncate max-w-xs">{tx.description}</span>
+							{#if tx.transaction_type === 'TRANSFER'}
+								<span class="text-[10px] text-slate-400 block mt-0.5">
+									{isTransferIn ? 'Dari: ' + (tx.account_name || 'Rekening Asal') : 'Ke: ' + (tx.destination_account_name || 'Rekening Tujuan')}
+								</span>
+							{/if}
+						</td>
+						<td class="p-3.5 whitespace-nowrap">
+							<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-semibold {isIncome ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'}">
+								{#if isIncome}
+									<ArrowDownLeft class="w-3 h-3" />
+								{:else}
+									<ArrowUpRight class="w-3 h-3" />
+								{/if}
+								<span>{tx.transaction_type}</span>
+							</span>
+							{#if tx.category_name}
+								<span class="text-[11px] text-slate-500 dark:text-slate-400 ml-1.5">{tx.category_name}</span>
+							{/if}
+						</td>
+						<td class="p-3.5 text-right font-semibold whitespace-nowrap {isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}">
+							{isIncome ? '+' : '-'}{formatRupiah(tx.amount)}
+						</td>
+						<td class="p-3.5 text-center whitespace-nowrap">
+							<button
+								type="button"
+								onclick={() => financialStore.deleteTransaction(tx.id)}
+								class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+								title="Hapus Transaksi"
+							>
+								<Trash2 class="w-4 h-4" />
+							</button>
+						</td>
+					</tr>
+				{/snippet}
+			</Table>
 		</div>
 
 		<!-- Modals -->
