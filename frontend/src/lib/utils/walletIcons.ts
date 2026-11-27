@@ -1,3 +1,5 @@
+import { financialStore } from '$lib/stores/financial.svelte';
+
 export interface WalletPreset {
 	id: string;
 	name: string;
@@ -29,7 +31,22 @@ export function getWalletImage(icon?: string, type?: string): string {
 		if (icon.startsWith('/') || icon.startsWith('http') || icon.startsWith('data:image/')) {
 			return icon;
 		}
-		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase());
+
+		// 1. Lookup in dynamic walletMasters from financialStore
+		if (financialStore?.walletMasters?.length) {
+			const wm = financialStore.walletMasters.find(
+				(m) =>
+					m.code?.toLowerCase() === icon.toLowerCase() ||
+					m.id === icon ||
+					m.name?.toLowerCase() === icon.toLowerCase()
+			);
+			if (wm?.image) {
+				return wm.image;
+			}
+		}
+
+		// 2. Lookup in static presets
+		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase() || p.name.toLowerCase() === icon.toLowerCase());
 		if (preset) return preset.image;
 	}
 
@@ -49,8 +66,24 @@ export function getWalletImage(icon?: string, type?: string): string {
 }
 
 export function getWalletColor(icon?: string, type?: string, explicitColor?: string, name?: string): string {
+	// 1. Lookup in dynamic walletMasters from financialStore
+	if (financialStore?.walletMasters?.length && icon) {
+		const wm = financialStore.walletMasters.find(
+			(m) =>
+				m.code?.toLowerCase() === icon.toLowerCase() ||
+				m.id === icon ||
+				m.name?.toLowerCase() === icon.toLowerCase()
+		);
+		if (wm?.color) return wm.color;
+	}
+
 	if (explicitColor && explicitColor !== '#007AFF' && explicitColor !== '#000000') {
 		return explicitColor;
+	}
+
+	if (icon) {
+		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase() || p.name.toLowerCase() === icon.toLowerCase());
+		if (preset?.color) return preset.color;
 	}
 
 	const lowerName = (name || '').toLowerCase();
@@ -59,11 +92,6 @@ export function getWalletColor(icon?: string, type?: string, explicitColor?: str
 	}
 	if (lowerName.includes('bitcoin') || lowerName.includes('btc') || lowerName.includes('crypto')) {
 		return '#F59E0B';
-	}
-
-	if (icon) {
-		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase());
-		if (preset?.color) return preset.color;
 	}
 
 	switch (type) {

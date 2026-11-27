@@ -259,44 +259,48 @@
 					</div>
 				</div>
 
-				<!-- Right: Consolidated Action Buttons (Requested by user to keep cards clean) -->
+				<!-- Right: Consolidated Action Buttons (High-contrast solid design requested by user) -->
 				<div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 lg:self-center">
-					<Button
-						variant="outline"
-						class="h-10 px-3.5 text-xs border-slate-200 dark:border-white/10 hover:border-[#007AFF]"
-						onclick={() => (isTransferModalOpen = true)}
-					>
-						<ArrowLeftRight class="w-4 h-4 mr-1.5 text-[#007AFF]" />
-						<span>Transfer Saldo</span>
-					</Button>
-
-					<Button
-						variant="primary"
-						class="h-10 px-4 text-xs"
+					<!-- Primary Action Button: Catat Transaksi -->
+					<button
+						type="button"
+						class="h-10 px-4 rounded-xl bg-[#007AFF] hover:bg-[#0066D6] text-white text-xs font-semibold shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/35 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0"
 						onclick={() => (isAddTxModalOpen = true)}
 					>
-						<Plus class="w-4 h-4 mr-1.5" />
+						<Plus class="w-4 h-4" />
 						<span>Catat Transaksi</span>
-					</Button>
+					</button>
 
-					<Button
-						variant="ghost"
-						class="h-10 px-3 text-xs border border-slate-200/80 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+					<!-- Solid Secondary Action Button: Transfer Saldo -->
+					<button
+						type="button"
+						class="h-10 px-3.5 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white border-2 border-slate-200/90 dark:border-slate-700 hover:border-[#007AFF] dark:hover:border-[#007AFF] hover:text-[#007AFF] text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0"
+						onclick={() => (isTransferModalOpen = true)}
+					>
+						<ArrowLeftRight class="w-4 h-4 text-[#007AFF]" />
+						<span>Transfer Saldo</span>
+					</button>
+
+					<!-- Solid Secondary Action Button: Ubah Logo & Akun -->
+					<button
+						type="button"
+						class="h-10 px-3.5 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white border-2 border-slate-200/90 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0"
 						onclick={openEdit}
 						title="Ubah Nama, Gambar & Ciri Khas"
 					>
-						<ImageIcon class="w-4 h-4 mr-1.5 text-slate-500" />
+						<ImageIcon class="w-4 h-4 text-slate-600 dark:text-slate-300" />
 						<span>Ubah Logo & Akun</span>
-					</Button>
+					</button>
 
-					<Button
-						variant="ghost"
-						class="h-10 px-3 text-xs border border-slate-200/80 dark:border-white/10 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+					<!-- Solid Danger Action Button: Hapus Rekening -->
+					<button
+						type="button"
+						class="h-10 w-10 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-2 border-rose-200/90 dark:border-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-900/40 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-xs shrink-0"
 						onclick={() => (isDeleteModalOpen = true)}
 						title="Hapus Rekening"
 					>
 						<Trash2 class="w-4 h-4" />
-					</Button>
+					</button>
 				</div>
 			</div>
 
@@ -397,15 +401,6 @@
 							</div>
 						{/if}
 					</div>
-
-					<Button
-						variant="primary"
-						class="h-9 px-3.5 text-xs"
-						onclick={() => (isAddTxModalOpen = true)}
-					>
-						<Plus class="w-4 h-4 mr-1.5" />
-						<span>Catat Transaksi</span>
-					</Button>
 				</div>
 			</div>
 
@@ -516,8 +511,9 @@
 								onclick={() => {
 									editIcon = preset.id;
 									editColor = preset.color;
+									editType = preset.category as AccountType;
 								}}
-								class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {editIcon === preset.id
+								class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {editIcon === preset.id || editIcon === preset.image
 									? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm'
 									: 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"
 								title={preset.name}
