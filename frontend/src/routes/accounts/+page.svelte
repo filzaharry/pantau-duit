@@ -3,15 +3,16 @@
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import { formatRupiah } from '$lib/utils/formatters';
-	import { WALLET_PRESETS, getWalletImage } from '$lib/utils/walletIcons';
+	import { WALLET_PRESETS, getWalletImage, hexToRgba } from '$lib/utils/walletIcons';
 	import AccountCard from '$lib/components/financial/AccountCard.svelte';
 	import AddTransactionModal from '$lib/components/financial/AddTransactionModal.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
+	import Table, { type TableColumn } from '$lib/components/ui/Table.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import AmountInput from '$lib/components/ui/AmountInput.svelte';
 	import Select from '$lib/components/ui/Select.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import type { Account, AccountType } from '$lib/types';
+	import type { Account, AccountType, Transaction } from '$lib/types';
 	import {
 		Wallet,
 		Plus,
@@ -23,9 +24,14 @@
 		Filter,
 		Trash2,
 		AlertTriangle,
-		Image as ImageIcon
+		Image as ImageIcon,
+		ChevronRight,
+		Coins,
+		Layers,
+		ArrowUpRight
 	} from 'lucide-svelte';
 
+	let viewMode = $state<'ACCOUNTS' | 'ASSET_TYPES'>('ACCOUNTS');
 	let isTransferModalOpen = $state(false);
 	let isAddAccountOpen = $state(false);
 	let searchQuery = $state('');
@@ -61,6 +67,256 @@
 			return true;
 		})
 	);
+
+	// Asset Groups Aggregation (Per Tipe Tabungan / Aset)
+	interface AssetGroup {
+		key: string;
+		name: string;
+		code: string;
+		category: AccountType;
+		image: string;
+		color: string;
+		totalBalance: number;
+		transactionCount: number;
+		accounts: {
+			id: string;
+			name: string;
+			balance: number;
+			txCount: number;
+			icon?: string;
+			color?: string;
+		}[];
+		transactions: (Transaction & { account_name?: string })[];
+	}
+
+	let selectedAssetGroup = $state<AssetGroup | null>(null);
+	let isAssetDetailOpen = $state(false);
+
+	function openAssetDetail(group: AssetGroup) {
+		selectedAssetGroup = group;
+		isAssetDetailOpen = true;
+	}
+
+	function detectAssetType(text: string, account?: Account) {
+		const lower = (text + ' ' + (account?.name || '') + ' ' + (account?.icon || '')).toLowerCase();
+
+		if (
+			lower.includes('bitcoin') ||
+			lower.includes('btc') ||
+			lower.includes('crypto') ||
+			lower.includes('kripto') ||
+			lower.includes('eth') ||
+			lower.includes('ethereum')
+		) {
+			return {
+				key: 'CRYPTO',
+				name: 'Bitcoin & Kripto',
+				code: 'crypto',
+				category: 'INVESTMENT' as AccountType,
+				image: getWalletImage('crypto', 'INVESTMENT'),
+				color: '#D97706'
+			};
+		}
+
+		if (
+			lower.includes('dollar') ||
+			lower.includes('dolar') ||
+			lower.includes('usd') ||
+			lower.includes('valas')
+		) {
+			return {
+				key: 'USD',
+				name: 'Dollar USD & Valas',
+				code: 'pluangdollarusd',
+				category: 'BANK' as AccountType,
+				image: getWalletImage('pluangdollarusd', 'BANK'),
+				color: '#10B981'
+			};
+		}
+
+		if (
+			lower.includes('emas') ||
+			lower.includes('gold') ||
+			lower.includes('antam') ||
+			lower.includes('logam mulia')
+		) {
+			return {
+				key: 'GOLD',
+				name: 'Emas & Logam Mulia',
+				code: 'pluangemas',
+				category: 'INVESTMENT' as AccountType,
+				image: getWalletImage('pluangemas', 'INVESTMENT'),
+				color: '#EAB308'
+			};
+		}
+
+		if (
+			lower.includes('cash') ||
+			lower.includes('tunai') ||
+			lower.includes('uang kas') ||
+			account?.type === 'CASH' ||
+			account?.icon === 'cash'
+		) {
+			return {
+				key: 'CASH',
+				name: 'Uang Tunai (Cash)',
+				code: 'cash',
+				category: 'CASH' as AccountType,
+				image: getWalletImage('cash', 'CASH'),
+				color: '#059669'
+			};
+		}
+
+		if (
+			account?.type === 'E_WALLET' ||
+			lower.includes('gopay') ||
+			lower.includes('ovo') ||
+			lower.includes('dana') ||
+			lower.includes('shopeepay')
+		) {
+			const iconCode = account?.icon || 'wallet';
+			return {
+				key: 'E_WALLET',
+				name: 'Dompet Digital (E-Wallet)',
+				code: iconCode,
+				category: 'E_WALLET' as AccountType,
+				image: getWalletImage(iconCode, 'E_WALLET'),
+				color: '#00AED6'
+			};
+		}
+
+		const bankCode = account?.icon || 'bca';
+		return {
+			key: 'BANK',
+			name: account?.name || 'Rekening Bank',
+			code: bankCode,
+			category: 'BANK' as AccountType,
+			image: getWalletImage(bankCode, 'BANK'),
+			color: account?.color || '#0060C4'
+		};
+	}
+
+	const assetGroups = $derived.by(() => {
+		const groupsMap = new Map<string, AssetGroup>();
+
+		function getOrCreateGroup(info: ReturnType<typeof detectAssetType>): AssetGroup {
+			if (!groupsMap.has(info.key)) {
+				groupsMap.set(info.key, {
+					key: info.key,
+					name: info.name,
+					code: info.code,
+					category: info.category,
+					image: info.image,
+					color: info.color,
+					totalBalance: 0,
+					transactionCount: 0,
+					accounts: [],
+					transactions: []
+				});
+			}
+			return groupsMap.get(info.key)!;
+		}
+
+		const accounts = financialStore.accounts;
+		const allTransactions = financialStore.transactions;
+
+		const accountMap = new Map<string, Account>();
+		accounts.forEach((a) => accountMap.set(a.id, a));
+
+		const accountProcessedTxSum = new Map<string, number>();
+
+		for (const tx of allTransactions) {
+			const acc = accountMap.get(tx.account_id);
+			if (!acc) continue;
+
+			const info = detectAssetType(tx.description || '', acc);
+			const group = getOrCreateGroup(info);
+
+			let delta = 0;
+			if (tx.transaction_type === 'INCOME') {
+				delta = Number(tx.amount);
+			} else if (tx.transaction_type === 'EXPENSE') {
+				delta = -Number(tx.amount);
+			} else if (tx.transaction_type === 'TRANSFER') {
+				delta = -Number(tx.amount);
+			}
+
+			group.totalBalance += delta;
+			group.transactionCount += 1;
+			group.transactions.push({
+				...tx,
+				account_name: acc.name
+			});
+
+			accountProcessedTxSum.set(acc.id, (accountProcessedTxSum.get(acc.id) || 0) + delta);
+
+			let accEntry = group.accounts.find((a) => a.id === acc.id);
+			if (!accEntry) {
+				accEntry = {
+					id: acc.id,
+					name: acc.name,
+					balance: 0,
+					txCount: 0,
+					icon: acc.icon,
+					color: acc.color
+				};
+				group.accounts.push(accEntry);
+			}
+			accEntry.balance += delta;
+			accEntry.txCount += 1;
+		}
+
+		for (const acc of accounts) {
+			const currentBal = Number(acc.current_balance || acc.balance || 0);
+			const txSum = accountProcessedTxSum.get(acc.id) || 0;
+			const remaining = currentBal - txSum;
+
+			if (Math.abs(remaining) > 0.01) {
+				const info = detectAssetType(acc.name, acc);
+				const group = getOrCreateGroup(info);
+				group.totalBalance += remaining;
+
+				let accEntry = group.accounts.find((a) => a.id === acc.id);
+				if (!accEntry) {
+					accEntry = {
+						id: acc.id,
+						name: acc.name,
+						balance: 0,
+						txCount: 0,
+						icon: acc.icon,
+						color: acc.color
+					};
+					group.accounts.push(accEntry);
+				}
+				accEntry.balance += remaining;
+			}
+		}
+
+		return Array.from(groupsMap.values())
+			.filter((g) => g.accounts.length > 0 || g.totalBalance !== 0 || g.transactions.length > 0)
+			.sort((a, b) => b.totalBalance - a.totalBalance);
+	});
+
+	const filteredAssetGroups = $derived(
+		assetGroups.filter((g) => {
+			if (selectedType !== 'ALL' && g.category !== selectedType) return false;
+			if (searchQuery.trim()) {
+				const q = searchQuery.toLowerCase();
+				return (
+					g.name.toLowerCase().includes(q) ||
+					g.accounts.some((a) => a.name.toLowerCase().includes(q))
+				);
+			}
+			return true;
+		})
+	);
+
+	const assetTxColumns: TableColumn<any>[] = [
+		{ key: 'transaction_date', header: 'Tanggal', width: '120px', sortable: true },
+		{ key: 'account_name', header: 'Dompet Asal', width: '160px', sortable: true },
+		{ key: 'description', header: 'Keterangan', sortable: true },
+		{ key: 'amount', header: 'Nominal', align: 'right', width: '140px', sortable: true }
+	];
 
 	// Delete Confirmation Modal State
 	let isDeleteConfirmOpen = $state(false);
@@ -245,19 +501,48 @@
 	</div>
 
 	<!-- Unified Action Toolbar -->
-	<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-		<!-- Search Field -->
-		<div class="relative w-full sm:w-[40%] sm:max-w-[40%]">
-			<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Cari rekening atau nama bank..."
-				class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
-			/>
+	<div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+		<!-- Left: Search Field & Segmented Switcher -->
+		<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+			<!-- Search Field -->
+			<div class="relative w-full sm:w-64">
+				<Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder={viewMode === 'ACCOUNTS' ? "Cari rekening atau nama bank..." : "Cari tipe aset atau dompet..."}
+					class="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#007AFF] transition-colors"
+				/>
+			</div>
+
+			<!-- View Mode Segmented Switcher -->
+			<div class="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 shrink-0 self-start sm:self-auto">
+				<button
+					type="button"
+					onclick={() => (viewMode = 'ACCOUNTS')}
+					class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer {viewMode === 'ACCOUNTS' ? 'bg-white dark:bg-[#1E2333] text-[#007AFF] dark:text-[#0A84FF] shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
+				>
+					<Wallet class="w-3.5 h-3.5" />
+					<span>Per Dompet</span>
+					<span class="text-[10px] px-1.5 py-0.2 rounded-full {viewMode === 'ACCOUNTS' ? 'bg-blue-50 dark:bg-blue-500/20 text-[#007AFF]' : 'bg-slate-200/60 dark:bg-white/10 text-slate-500'}">
+						{financialStore.accounts.length}
+					</span>
+				</button>
+				<button
+					type="button"
+					onclick={() => (viewMode = 'ASSET_TYPES')}
+					class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer {viewMode === 'ASSET_TYPES' ? 'bg-white dark:bg-[#1E2333] text-[#007AFF] dark:text-[#0A84FF] shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}"
+				>
+					<Banknote class="w-3.5 h-3.5" />
+					<span>Per Tipe Tabungan / Aset</span>
+					<span class="text-[10px] px-1.5 py-0.2 rounded-full {viewMode === 'ASSET_TYPES' ? 'bg-blue-50 dark:bg-blue-500/20 text-[#007AFF]' : 'bg-slate-200/60 dark:bg-white/10 text-slate-500'}">
+						{assetGroups.length}
+					</span>
+				</button>
+			</div>
 		</div>
 
-		<!-- Action Buttons: Filter, Transfer, Tambah Rekening -->
+		<!-- Action Buttons: Filter, + Tambah Rekening / Kelola Master Dompet -->
 		<div class="flex items-center gap-2">
 			<!-- Filter Button with Popover -->
 			<div class="relative">
@@ -283,7 +568,7 @@
 
 					<div class="absolute right-0 top-full mt-2 w-56 p-3 rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10 shadow-2xl z-40 space-y-3">
 						<div>
-							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Rekening</span>
+							<span class="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Tipe Rekening / Aset</span>
 							<select
 								bind:value={selectedType}
 								class="w-full h-8 px-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-[#007AFF]"
@@ -292,7 +577,7 @@
 								<option value="BANK">Rekening Bank</option>
 								<option value="E_WALLET">Dompet Digital</option>
 								<option value="CASH">Uang Tunai</option>
-								<option value="INVESTMENT">Investasi</option>
+								<option value="INVESTMENT">Investasi & Kripto</option>
 							</select>
 						</div>
 
@@ -311,34 +596,141 @@
 				{/if}
 			</div>
 
-			<Button variant="primary" class="h-9 px-3.5 text-xs" onclick={() => (isAddAccountOpen = true)}>
-				<Plus class="w-4 h-4 mr-1.5" />
-				<span>Tambah Rekening</span>
-			</Button>
+			{#if viewMode === 'ACCOUNTS'}
+				<Button variant="primary" class="h-9 px-3.5 text-xs" onclick={() => (isAddAccountOpen = true)}>
+					<Plus class="w-4 h-4 mr-1.5" />
+					<span>Tambah Rekening</span>
+				</Button>
+			{:else}
+				<a
+					href="/wallet-master"
+					class="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-white/5 hover:border-[#007AFF] text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+				>
+					<ImageIcon class="w-3.5 h-3.5 text-[#007AFF]" />
+					<span>Kelola Master Dompet</span>
+				</a>
+			{/if}
 		</div>
 	</div>
 
-	<!-- Accounts Cards Grid -->
-	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-		{#each filteredAccounts as account (account.id)}
-			<AccountCard {account} />
-		{/each}
+	<!-- Cards Grid -->
+	{#if viewMode === 'ACCOUNTS'}
+		<!-- Mode 1: Per Dompet / Rekening -->
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+			{#each filteredAccounts as account (account.id)}
+				<AccountCard {account} />
+			{/each}
 
-		<!-- + Tambah Rekening Interactive Card -->
-		<button
-			type="button"
-			onclick={() => (isAddAccountOpen = true)}
-			class="p-3.5 sm:p-5 rounded-2xl border border-dashed border-slate-200/90 dark:border-white/10 hover:border-[#007AFF] dark:hover:border-[#0A84FF] flex flex-row sm:flex-col items-center justify-center text-left sm:text-center gap-3 sm:gap-2.5 group transition-all min-h-[56px] sm:min-h-[140px] bg-slate-50/50 dark:bg-white/[0.01] hover:bg-blue-50/20 dark:hover:bg-blue-500/[0.02] cursor-pointer"
-		>
-			<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-				<Plus class="w-4 h-4 sm:w-5 sm:h-5" />
+			<!-- + Tambah Rekening Interactive Card -->
+			<button
+				type="button"
+				onclick={() => (isAddAccountOpen = true)}
+				class="p-3.5 sm:p-5 rounded-2xl border border-dashed border-slate-200/90 dark:border-white/10 hover:border-[#007AFF] dark:hover:border-[#0A84FF] flex flex-row sm:flex-col items-center justify-center text-left sm:text-center gap-3 sm:gap-2.5 group transition-all min-h-[56px] sm:min-h-[140px] bg-slate-50/50 dark:bg-white/[0.01] hover:bg-blue-50/20 dark:hover:bg-blue-500/[0.02] cursor-pointer"
+			>
+				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+					<Plus class="w-4 h-4 sm:w-5 sm:h-5" />
+				</div>
+				<div>
+					<span class="text-xs font-semibold text-slate-900 dark:text-white block group-hover:text-[#007AFF] dark:group-hover:text-[#0A84FF]">Tambah Rekening</span>
+					<span class="text-[10px] sm:text-[11px] text-slate-400 block">Hubungkan bank / e-wallet baru</span>
+				</div>
+			</button>
+		</div>
+	{:else}
+		<!-- Mode 2: Per Tipe Tabungan / Aset (Aggregated by Asset Type) -->
+		{#if filteredAssetGroups.length === 0}
+			<div class="p-8 text-center rounded-2xl bg-white dark:bg-[#151926] border border-slate-200/80 dark:border-white/10">
+				<p class="text-xs text-slate-500 dark:text-slate-400">Tidak ada tipe aset yang sesuai filter pencarian.</p>
 			</div>
-			<div>
-				<span class="text-xs font-semibold text-slate-900 dark:text-white block group-hover:text-[#007AFF] dark:group-hover:text-[#0A84FF]">Tambah Rekening</span>
-				<span class="text-[10px] sm:text-[11px] text-slate-400 block">Hubungkan bank / e-wallet baru</span>
+		{:else}
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+				{#each filteredAssetGroups as group (group.key)}
+					<button
+						type="button"
+						onclick={() => openAssetDetail(group)}
+						class="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#151926] border flex flex-col justify-between gap-3 min-w-[240px] relative overflow-hidden group hover:-translate-y-0.5 hover:shadow-lg transition-all text-left cursor-pointer"
+						style="
+							border-color: {hexToRgba(group.color, 0.28)};
+							box-shadow: 0 4px 20px -4px {hexToRgba(group.color, 0.08)};
+						"
+					>
+						<!-- Subtle Brand Tint Overlay with Opacity -->
+						<div
+							class="absolute inset-0 pointer-events-none transition-opacity duration-300"
+							style="background: linear-gradient(135deg, {hexToRgba(group.color, 0.08)} 0%, {hexToRgba(group.color, 0.16)} 100%);"
+						></div>
+
+						<!-- Ambient soft radial light from top right -->
+						<div
+							class="absolute -top-12 -right-12 w-32 h-32 rounded-full pointer-events-none blur-2xl opacity-40 group-hover:opacity-70 transition-opacity"
+							style="background: {group.color};"
+						></div>
+
+						<!-- Card Content -->
+						<div class="relative z-10 flex flex-col justify-between gap-3 h-full w-full">
+							<!-- Card Top: Logo & Title -->
+							<div class="flex items-center justify-between gap-3 min-w-0">
+								<div class="flex items-center gap-3 min-w-0 flex-1">
+									<div
+										class="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 p-1 border shadow-xs relative overflow-hidden group-hover:scale-105 transition-transform"
+										style="background-color: {hexToRgba(group.color, 0.12)}; border-color: {hexToRgba(group.color, 0.25)};"
+									>
+										<img
+											src={group.image}
+											alt={group.name}
+											class="w-full h-full object-contain rounded-xl"
+											loading="lazy"
+										/>
+									</div>
+									<div class="min-w-0 flex-1">
+										<h4
+											class="text-sm font-semibold text-slate-900 dark:text-white tracking-tight leading-snug truncate group-hover:opacity-85 transition-opacity"
+											title={group.name}
+										>
+											{group.name}
+										</h4>
+										<span class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 block truncate">
+											{group.accounts.length} Dompet • {group.transactionCount} Mutasi
+										</span>
+									</div>
+								</div>
+
+								<div
+									class="w-7 h-7 rounded-xl flex items-center justify-center transition-colors shrink-0"
+									style="background-color: {hexToRgba(group.color, 0.12)}; color: {group.color};"
+								>
+									<ChevronRight class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+								</div>
+							</div>
+
+							<!-- Wallets tags preview -->
+							<div class="flex flex-wrap gap-1.5 pt-1">
+								{#each group.accounts as acc}
+									<span class="text-[10px] px-2 py-0.5 rounded-md font-medium bg-white/70 dark:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-200/50 dark:border-white/5 truncate max-w-[150px]">
+										{acc.name}
+									</span>
+								{/each}
+							</div>
+
+							<!-- Card Balance & Status -->
+							<div
+								class="pt-2.5 border-t flex items-center justify-between"
+								style="border-color: {hexToRgba(group.color, 0.18)};"
+							>
+								<div class="flex items-center gap-1.5">
+									<span class="w-2 h-2 rounded-full" style="background-color: {group.color};"></span>
+									<span class="text-[10px] font-semibold text-slate-600 dark:text-slate-400">Total Akumulasi</span>
+								</div>
+								<span class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white tracking-tight">
+									{formatRupiah(group.totalBalance)}
+								</span>
+							</div>
+						</div>
+					</button>
+				{/each}
 			</div>
-		</button>
-	</div>
+		{/if}
+	{/if}
 
 	<!-- Transfer & Add Account Modals -->
 	<AddTransactionModal bind:open={isTransferModalOpen} />
@@ -517,6 +909,133 @@
 				<Trash2 class="w-3.5 h-3.5" />
 				<span>Ya, Hapus Rekening</span>
 			</button>
+		{/snippet}
+	</Modal>
+
+	<!-- Detail Modal for Selected Asset Group -->
+	<Modal
+		bind:open={isAssetDetailOpen}
+		title={selectedAssetGroup?.name || 'Rincian Aset'}
+		description="Akumulasi saldo dan riwayat mutasi aset di seluruh rekening dompet Anda"
+		maxWidth="2xl"
+	>
+		{#if selectedAssetGroup}
+			<div class="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+				<!-- Header Card in Modal with Opacity Tint -->
+				<div
+					class="p-4 rounded-2xl border flex items-center justify-between gap-4 relative overflow-hidden"
+					style="
+						background: linear-gradient(135deg, {hexToRgba(selectedAssetGroup.color, 0.08)} 0%, {hexToRgba(selectedAssetGroup.color, 0.18)} 100%);
+						border-color: {hexToRgba(selectedAssetGroup.color, 0.3)};
+					"
+				>
+					<div class="flex items-center gap-3.5 relative z-10 min-w-0">
+						<div
+							class="w-12 h-12 rounded-2xl flex items-center justify-center p-1.5 bg-white dark:bg-[#1E2333] border shadow-xs shrink-0"
+							style="border-color: {hexToRgba(selectedAssetGroup.color, 0.3)};"
+						>
+							<img src={selectedAssetGroup.image} alt={selectedAssetGroup.name} class="w-full h-full object-contain rounded-xl" />
+						</div>
+						<div class="min-w-0">
+							<h3 class="text-base font-semibold text-slate-900 dark:text-white truncate">{selectedAssetGroup.name}</h3>
+							<span class="text-xs text-slate-500 dark:text-slate-400 block truncate">
+								Tersebar di {selectedAssetGroup.accounts.length} dompet • {selectedAssetGroup.transactionCount} mutasi
+							</span>
+						</div>
+					</div>
+					<div class="text-right shrink-0 relative z-10">
+						<span class="text-[10px] uppercase font-semibold text-slate-400 block tracking-wider">Total Akumulasi</span>
+						<span class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+							{formatRupiah(selectedAssetGroup.totalBalance)}
+						</span>
+					</div>
+				</div>
+
+				<!-- Contributing Wallets Breakdown -->
+				<div>
+					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
+						<span>Saldo per Dompet / Rekening</span>
+						<span class="text-[11px] text-slate-400 font-normal">Klik untuk buka dompet</span>
+					</h4>
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+						{#each selectedAssetGroup.accounts as acc}
+							<a
+								href="/accounts/{acc.id}"
+								class="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 hover:border-[#007AFF] bg-slate-50/50 dark:bg-white/[0.02] hover:bg-blue-50/20 dark:hover:bg-blue-500/5 transition-all flex items-center justify-between group"
+							>
+								<div class="min-w-0 flex-1 pr-2">
+									<span class="text-xs font-semibold text-slate-900 dark:text-white truncate block group-hover:text-[#007AFF]">
+										{acc.name}
+									</span>
+									<span class="text-[10px] text-slate-400 block">
+										{acc.txCount} mutasi terkait
+									</span>
+								</div>
+								<div class="text-right shrink-0">
+									<span class="text-xs font-semibold text-slate-900 dark:text-white block">
+										{formatRupiah(acc.balance)}
+									</span>
+									<span class="text-[10px] text-[#007AFF] font-medium group-hover:underline flex items-center justify-end gap-0.5">
+										<span>Buka</span>
+										<ArrowUpRight class="w-3 h-3" />
+									</span>
+								</div>
+							</a>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Transactions Table -->
+				<div class="space-y-2">
+					<h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+						Daftar Mutasi Transaksi Terkait ({selectedAssetGroup.transactions.length})
+					</h4>
+					{#if selectedAssetGroup.transactions.length === 0}
+						<div class="p-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 text-center">
+							<p class="text-xs text-slate-400">Tidak ada riwayat mutasi untuk aset ini.</p>
+						</div>
+					{:else}
+						<Table
+							columns={assetTxColumns}
+							items={selectedAssetGroup.transactions}
+							pageSize={5}
+							pageSizeOptions={[5, 10, 25]}
+							defaultSortKey="transaction_date"
+							defaultSortDirection="desc"
+						>
+							{#snippet row(tx)}
+								<td class="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
+									{new Date(tx.transaction_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+								</td>
+								<td class="px-3 py-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
+									<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/10 text-[11px]">
+										{tx.account_name}
+									</span>
+								</td>
+								<td class="px-3 py-2.5 text-xs text-slate-700 dark:text-slate-300">
+									<span class="font-medium text-slate-900 dark:text-white block">{tx.description}</span>
+									{#if tx.notes}
+										<span class="text-[10px] text-slate-400 block truncate max-w-xs">{tx.notes}</span>
+									{/if}
+								</td>
+								<td class="px-3 py-2.5 text-xs text-right font-semibold whitespace-nowrap">
+									<span class={tx.transaction_type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+										{tx.transaction_type === 'INCOME' ? '+' : '-'}{formatRupiah(tx.amount)}
+									</span>
+								</td>
+							{/snippet}
+						</Table>
+					{/if}
+				</div>
+
+				<div class="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-500/5 border border-blue-200/50 dark:border-blue-500/20 text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+					💡 <strong>Info Tipe Aset</strong>: Saldo dan transaksi di atas dikelompokkan secara otomatis dari seluruh dompet tabungan. Untuk menambah jenis instrumen baru, buka menu <a href="/wallet-master" class="text-[#007AFF] font-semibold underline">Master Dompet</a>.
+				</div>
+			</div>
+		{/if}
+
+		{#snippet footer()}
+			<Button variant="ghost" onclick={() => (isAssetDetailOpen = false)}>Tutup</Button>
 		{/snippet}
 	</Modal>
 </div>

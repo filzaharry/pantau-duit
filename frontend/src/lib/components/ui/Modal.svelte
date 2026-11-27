@@ -6,6 +6,7 @@
 		open?: boolean;
 		title?: string;
 		description?: string;
+		maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
 		children?: Snippet;
 		footer?: Snippet;
 		onclose?: () => void;
@@ -15,10 +16,22 @@
 		open = $bindable(false),
 		title,
 		description,
+		maxWidth = 'lg',
 		children,
 		footer,
 		onclose
 	}: Props = $props();
+
+	const maxWidthClass = $derived(
+		{
+			sm: 'max-w-sm',
+			md: 'max-w-md',
+			lg: 'max-w-lg',
+			xl: 'max-w-xl',
+			'2xl': 'max-w-2xl',
+			'3xl': 'max-w-3xl'
+		}[maxWidth] || 'max-w-lg'
+	);
 
 	function handleBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) {
@@ -50,7 +63,7 @@
 	>
 		<!-- Modal Container: Bottom Sheet on Mobile (<640px) / Centered Dialog on Desktop (>=640px) -->
 		<div
-			class="relative w-full max-w-lg max-h-[90vh] flex flex-col bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] rounded-t-[28px] sm:rounded-3xl border-t sm:border border-slate-200/80 dark:border-white/10 overflow-hidden animate-in fade-in duration-200"
+			class="relative w-full {maxWidthClass} max-h-[90vh] flex flex-col bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] rounded-t-[28px] sm:rounded-3xl border-t sm:border border-slate-200/80 dark:border-white/10 overflow-hidden animate-in fade-in duration-200"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby={title ? 'modal-title' : undefined}
