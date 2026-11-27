@@ -21,7 +21,7 @@ class Account(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     current_balance: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=Decimal("0.00"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE", nullable=False)
     color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    icon: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -162,7 +162,7 @@ class FinancialGoal(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="IN_PROGRESS", nullable=False)
     color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    icon: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint("target_amount > 0", name="chk_financial_goals_target"),
@@ -226,3 +226,25 @@ class RecurringTransaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     account: Mapped["Account"] = relationship("Account", foreign_keys=[account_id])
     destination_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[destination_account_id])
     category: Mapped[Optional["Category"]] = relationship("Category")
+
+
+class WalletMaster(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "wallet_masters"
+
+    tenant_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str] = mapped_column(String(30), default="BANK", nullable=False)
+    color: Mapped[Optional[str]] = mapped_column(String(30), default="#007AFF", nullable=True)
+    image: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('BANK', 'E_WALLET', 'CASH', 'INVESTMENT', 'OTHER')",
+            name="chk_wallet_masters_category"
+        ),
+        Index("idx_wallet_masters_tenant", "tenant_id"),
+        Index("idx_wallet_masters_code", "code"),
+    )

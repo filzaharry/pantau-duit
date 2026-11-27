@@ -34,6 +34,18 @@
 
 	const isFilterActive = $derived(selectedType !== 'ALL');
 
+	const availablePresets = $derived(
+		financialStore.walletMasters.length > 0
+			? financialStore.walletMasters.map((wm) => ({
+					id: wm.code,
+					name: wm.name,
+					category: wm.category,
+					image: getWalletImage(wm.image || wm.code, wm.category),
+					color: wm.color || '#007AFF'
+				}))
+			: WALLET_PRESETS
+	);
+
 	function resetFilters() {
 		selectedType = 'ALL';
 		isFilterOpen = false;
@@ -308,21 +320,6 @@
 				{/if}
 			</div>
 
-			<Button
-				variant="outline"
-				class="h-9 px-3 text-xs"
-				onclick={() => {
-					if (financialStore.accounts.length < 2) {
-						notificationStore.showToast('Transfer membutuhkan minimal 2 rekening terdaftar.', 'warning');
-						return;
-					}
-					isTransferModalOpen = true;
-				}}
-			>
-				<ArrowLeftRight class="w-3.5 h-3.5 mr-1.5" />
-				<span>Transfer</span>
-			</Button>
-
 			<Button variant="primary" class="h-9 px-3.5 text-xs" onclick={() => (isAddAccountOpen = true)}>
 				<Plus class="w-4 h-4 mr-1.5" />
 				<span>Tambah Rekening</span>
@@ -333,12 +330,7 @@
 	<!-- Accounts Cards Grid -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
 		{#each filteredAccounts as account (account.id)}
-			<AccountCard
-				{account}
-				onedit={openEditModal}
-				ondelete={openDeleteModal}
-				ontransfer={() => (isTransferModalOpen = true)}
-			/>
+			<AccountCard {account} />
 		{/each}
 
 		<!-- + Tambah Rekening Interactive Card -->
@@ -395,13 +387,21 @@
 					<span class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
 						Pilih Gambar & Ciri Khas Dompet
 					</span>
-					<span class="text-[10px] text-slate-400">Pilih logo/ikon dompet</span>
+					<a href="/wallet-master" class="text-[11px] font-semibold text-[#007AFF] hover:underline flex items-center gap-1">
+						+ Kelola Master Dompet
+					</a>
 				</div>
 				<div class="grid grid-cols-4 sm:grid-cols-7 gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] max-h-48 overflow-y-auto">
-					{#each WALLET_PRESETS as preset}
+					{#each availablePresets as preset}
 						<button
 							type="button"
-							onclick={() => (selectedIcon = preset.id)}
+							onclick={() => {
+								selectedIcon = preset.id;
+								if (!accountName.trim() || accountName === 'Bank BCA') {
+									accountName = preset.name;
+								}
+								accountType = preset.category as AccountType;
+							}}
 							class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {selectedIcon === preset.id ? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm' : 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"
 							title={preset.name}
 						>
@@ -468,10 +468,12 @@
 					<span class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
 						Ganti Gambar & Ciri Khas Dompet
 					</span>
-					<span class="text-[10px] text-slate-400">Pilih logo/ikon dompet</span>
+					<a href="/wallet-master" class="text-[11px] font-semibold text-[#007AFF] hover:underline flex items-center gap-1">
+						+ Kelola Master Dompet
+					</a>
 				</div>
 				<div class="grid grid-cols-4 sm:grid-cols-7 gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06] max-h-48 overflow-y-auto">
-					{#each WALLET_PRESETS as preset}
+					{#each availablePresets as preset}
 						<button
 							type="button"
 							onclick={() => (editIcon = preset.id)}

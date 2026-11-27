@@ -8,6 +8,8 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
+	import { getWalletImage } from '$lib/utils/walletIcons';
+	import { formatRupiah } from '$lib/utils/formatters';
 	import type { TransactionType } from '$lib/types';
 	import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Wallet, Plus, AlertCircle } from 'lucide-svelte';
 
@@ -53,12 +55,23 @@
 		}
 	});
 
+	// Keep destination account different from source account
+	$effect(() => {
+		if (transactionType === 'TRANSFER' && destinationAccountId === accountId) {
+			const other = financialStore.accounts.find((a) => a.id !== accountId);
+			if (other) destinationAccountId = other.id;
+		}
+	});
+
 	// Select options with search suggest metadata
 	const accountOptions = $derived(
 		financialStore.accounts.map((acc) => ({
 			value: acc.id,
 			label: acc.name,
-			sublabel: acc.type.replace('_', ' ')
+			sublabel: acc.type.replace('_', ' '),
+			badge: acc.type.replace('_', ' '),
+			image: getWalletImage(acc.icon, acc.type),
+			extra: formatRupiah(acc.current_balance || acc.balance || 0)
 		}))
 	);
 
@@ -68,7 +81,10 @@
 			.map((acc) => ({
 				value: acc.id,
 				label: acc.name,
-				sublabel: acc.type.replace('_', ' ')
+				sublabel: acc.type.replace('_', ' '),
+				badge: acc.type.replace('_', ' '),
+				image: getWalletImage(acc.icon, acc.type),
+				extra: formatRupiah(acc.current_balance || acc.balance || 0)
 			}))
 	);
 
@@ -253,35 +269,8 @@
 						ℹ️ <strong>Aturan Bisnis:</strong> Transfer antar rekening mencatat mutasi saldo secara akurat tanpa mempengaruhi total pengeluaran belanja bulanan.
 					</div>
 				{/if}
-			{/if}
 
-			<!-- Amount Input with Percentage of Account Balance -->
-			<AmountInput
-				bind:value={amount}
-				label="Jumlah Nominal"
-				referenceBalance={transactionType === 'INCOME' ? financialStore.totalBalance : selectedAccount?.current_balance}
-				balanceLabel={selectedAccount ? `Saldo ${selectedAccount.name}` : 'Saldo Tabungan'}
-			/>
-
-			<!-- Description -->
-			<Input
-				bind:value={description}
-				label="Deskripsi / Catatan"
-				placeholder={transactionType === 'EXPENSE'
-					? 'Contoh: Makan siang nasi padang'
-					: transactionType === 'INCOME'
-						? 'Contoh: Gaji bulanan / Freelance'
-						: 'Contoh: Pindah saldo ke e-wallet'}
-			/>
-
-			<!-- Custom Indonesian Calendar DatePicker (Replacing Native HTML Date) -->
-			<DatePicker
-				bind:value={transactionDate}
-				label="Tanggal Transaksi"
-			/>
-
-			<!-- Account Selection with Search Suggest Dropdown (Limit Max 10, Overflow Auto) -->
-			{#if transactionType === 'TRANSFER'}
+				<!-- Source & Destination Account Selection (Top of Transfer) -->
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<SearchableSelect
 						bind:value={accountId}
@@ -298,6 +287,7 @@
 					/>
 				</div>
 			{:else}
+				<!-- Account & Category Selection for Expense / Income -->
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<SearchableSelect
 						bind:value={accountId}
@@ -314,6 +304,32 @@
 					/>
 				</div>
 			{/if}
+
+			<!-- Amount Input with Percentage of Account Balance -->
+			<AmountInput
+				bind:value={amount}
+				label="Jumlah Nominal"
+				referenceBalance={transactionType === 'INCOME' ? financialStore.totalBalance : Number(selectedAccount?.current_balance || selectedAccount?.balance || 0)}
+				balanceLabel={selectedAccount ? `Saldo ${selectedAccount.name}` : 'Saldo Tabungan'}
+				showBalance={true}
+			/>
+
+			<!-- Description -->
+			<Input
+				bind:value={description}
+				label="Deskripsi / Catatan"
+				placeholder={transactionType === 'EXPENSE'
+					? 'Contoh: Makan siang nasi padang'
+					: transactionType === 'INCOME'
+						? 'Contoh: Gaji bulanan / Freelance'
+						: 'Contoh: Pindah saldo ke e-wallet'}
+			/>
+
+			<!-- Custom Indonesian Calendar DatePicker -->
+			<DatePicker
+				bind:value={transactionDate}
+				label="Tanggal Transaksi"
+			/>
 
 			{#if error}
 				<p class="text-xs font-medium text-rose-500 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">

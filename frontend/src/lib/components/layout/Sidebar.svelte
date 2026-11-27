@@ -52,6 +52,7 @@
 				{ href: '/dashboard', label: 'Ringkasan Saya', icon: LayoutDashboard },
 				{ href: '/transactions', label: 'Riwayat Transaksi', icon: Receipt },
 				{ href: '/accounts', label: 'Dompet & Rekening', icon: Wallet },
+				{ href: '/wallet-master', label: 'Master Dompet', icon: SlidersHorizontal },
 				{ href: '/budgets', label: 'Batas Belanja', icon: PieChart },
 				{ href: '/goals', label: 'Target Tabungan', icon: Target },
 				{ href: '/investments', label: 'Investasi & Aset', icon: TrendingUp }
@@ -92,6 +93,7 @@
 			items: [
 				{ href: '/transactions', label: 'Riwayat Transaksi', icon: Receipt },
 				{ href: '/accounts', label: 'Dompet & Rekening', icon: Wallet },
+				{ href: '/wallet-master', label: 'Master Dompet', icon: SlidersHorizontal },
 				{ href: '/budgets', label: 'Batas Belanja', icon: PieChart },
 				{ href: '/investments', label: 'Investasi', icon: TrendingUp }
 			]

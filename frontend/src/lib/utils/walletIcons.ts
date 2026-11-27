@@ -20,15 +20,16 @@ export const WALLET_PRESETS: WalletPreset[] = [
 	{ id: 'wallet', name: 'Dompet Kulit', category: 'CASH', image: '/wallets/wallet.svg', color: '#B45309' },
 	{ id: 'piggy', name: 'Celengan Tabungan', category: 'OTHER', image: '/wallets/piggy.svg', color: '#EC4899' },
 	{ id: 'vault', name: 'Brankas Simpanan', category: 'OTHER', image: '/wallets/vault.svg', color: '#475569' },
-	{ id: 'crypto', name: 'Kripto / RDN', category: 'INVESTMENT', image: '/wallets/crypto.svg', color: '#D97706' }
+	{ id: 'crypto', name: 'Kripto / RDN', category: 'INVESTMENT', image: '/wallets/crypto.svg', color: '#D97706' },
+	{ id: 'gold', name: 'Emas & Logam Mulia', category: 'INVESTMENT', image: '/wallets/vault.svg', color: '#EAB308' }
 ];
 
 export function getWalletImage(icon?: string, type?: string): string {
 	if (icon) {
-		if (icon.startsWith('/') || icon.startsWith('http')) {
+		if (icon.startsWith('/') || icon.startsWith('http') || icon.startsWith('data:image/')) {
 			return icon;
 		}
-		const preset = WALLET_PRESETS.find((p) => p.id === icon.toLowerCase());
+		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase());
 		if (preset) return preset.image;
 	}
 

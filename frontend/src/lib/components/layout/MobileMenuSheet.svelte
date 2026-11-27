@@ -30,6 +30,7 @@
 	let { open = $bindable(false), onclose }: Props = $props();
 
 	const userMenuItems = [
+		{ href: '/wallet-master', label: 'Master Dompet', icon: SlidersHorizontal, color: 'text-indigo-500' },
 		{ href: '/budgets', label: 'Batas Belanja', icon: PieChart, color: 'text-amber-500' },
 		{ href: '/goals', label: 'Target Tabungan', icon: Target, color: 'text-emerald-500' },
 		{ href: '/investments', label: 'Portofolio Investasi', icon: TrendingUp, color: 'text-indigo-500' },

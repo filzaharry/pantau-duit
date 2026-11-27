@@ -1,4 +1,4 @@
-import type { Account, Category, Transaction, Budget, FinancialGoal, InvestmentHolding } from '$lib/types';
+import type { Account, Category, Transaction, Budget, FinancialGoal, InvestmentHolding, WalletMaster } from '$lib/types';
 import { apiFetch } from '$lib/services/api';
 import { notificationStore } from './notifications.svelte';
 import { authStore } from './auth.svelte';
@@ -27,6 +27,8 @@ class FinancialStore {
 	personalGoals = $state<FinancialGoal[]>([]);
 
 	personalInvestments = $state<InvestmentHolding[]>([]);
+
+	walletMasters = $state<WalletMaster[]>([]);
 
 	// ==========================================
 	// 2. DATA PLATFORM / SISTEM (SUPERUSER)
@@ -570,13 +572,14 @@ class FinancialStore {
 
 	async loadFromDatabase() {
 		try {
-			const [accRes, txRes, catRes, budgetRes, goalRes, invRes] = await Promise.all([
+			const [accRes, txRes, catRes, budgetRes, goalRes, invRes, wmRes] = await Promise.all([
 				apiFetch<Account[]>('/accounts'),
 				apiFetch<Transaction[]>('/transactions'),
 				apiFetch<Category[]>('/categories'),
 				apiFetch<Budget[]>('/budgets'),
 				apiFetch<FinancialGoal[]>('/goals'),
-				apiFetch<InvestmentHolding[]>('/investments')
+				apiFetch<InvestmentHolding[]>('/investments'),
+				apiFetch<WalletMaster[]>('/wallet-masters')
 			]);
 
 			if (accRes.data) {
@@ -602,6 +605,9 @@ class FinancialStore {
 			if (invRes.data) {
 				this.personalInvestments = invRes.data;
 				this.platformInvestments = invRes.data;
+			}
+			if (wmRes.data) {
+				this.walletMasters = wmRes.data;
 			}
 		} catch (err) {
 			console.warn('Fallback to local cache:', err);
@@ -786,6 +792,71 @@ class FinancialStore {
 		this.accounts = this.accounts.filter((a) => a.id !== id);
 		this.transactions = this.transactions.filter((t) => t.account_id !== id && t.destination_account_id !== id);
 		notificationStore.showToast('Rekening berhasil dihapus', 'info');
+	}
+
+	async loadWalletMasters() {
+		try {
+			const res = await apiFetch<WalletMaster[]>('/wallet-masters');
+			if (res.data) {
+				this.walletMasters = res.data;
+			}
+		} catch (err) {
+			console.warn('Failed to load wallet masters:', err);
+		}
+	}
+
+	async addWalletMaster(payload: { name: string; code?: string; category: string; color?: string; image?: string; description?: string }) {
+		try {
+			const res = await apiFetch<WalletMaster>('/wallet-masters', {
+				method: 'POST',
+				body: JSON.stringify(payload)
+			});
+			if (res.data) {
+				await this.loadWalletMasters();
+				notificationStore.showToast('Master Dompet baru berhasil ditambahkan!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal menambahkan master dompet');
+		} catch (err: any) {
+			console.error('API add wallet master failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menambahkan master dompet', 'error');
+			return null;
+		}
+	}
+
+	async updateWalletMaster(id: string, payload: { name?: string; category?: string; color?: string; image?: string; description?: string }) {
+		try {
+			const res = await apiFetch<WalletMaster>(`/wallet-masters/${id}`, {
+				method: 'PUT',
+				body: JSON.stringify(payload)
+			});
+			if (res.data || res.status === 200) {
+				await this.loadWalletMasters();
+				notificationStore.showToast('Master Dompet berhasil diperbarui!', 'success');
+				return res.data;
+			}
+			throw new Error(res.error || 'Gagal memperbarui master dompet');
+		} catch (err: any) {
+			console.error('API update wallet master failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal memperbarui master dompet', 'error');
+			return null;
+		}
+	}
+
+	async deleteWalletMaster(id: string) {
+		try {
+			const res = await apiFetch<any>(`/wallet-masters/${id}`, { method: 'DELETE' });
+			if (res.error) {
+				throw new Error(res.error);
+			}
+			await this.loadWalletMasters();
+			notificationStore.showToast('Master Dompet berhasil dihapus', 'info');
+			return true;
+		} catch (err: any) {
+			console.error('API delete wallet master failed:', err);
+			notificationStore.showToast(err?.message || 'Gagal menghapus master dompet', 'error');
+			return false;
+		}
 	}
 
 	async addBudget(payload: { category_id: string; amount: number; name?: string; alert_threshold_percent?: number }) {

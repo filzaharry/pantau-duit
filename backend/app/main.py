@@ -23,7 +23,7 @@ from app.models.auth import User
 from app.models.tenant import Tenant, TenantUser
 from app.models.rbac import Role, TenantUserRole, Permission, RolePermission
 from app.models.billing import Subscription, Plan
-from app.models.financial import Account, Category, Transaction, Budget, FinancialGoal, GoalContribution
+from app.models.financial import Account, Category, Transaction, Budget, FinancialGoal, GoalContribution, WalletMaster
 from app.models.investment import InvestmentHolding, InvestmentAsset
 from app.models.company import Employee, AttendanceRecord, PayrollRun, Department
 from app.models.telegram import TelegramAccount, TelegramChat, TelegramBot
@@ -326,6 +326,21 @@ class AccountCreate(BaseModel):
     opening_balance: float = 0.0
     color: Optional[str] = "#007AFF"
     icon: Optional[str] = "bca"
+
+class WalletMasterCreate(BaseModel):
+    name: str
+    code: Optional[str] = None
+    category: str = "BANK"
+    color: Optional[str] = "#007AFF"
+    image: Optional[str] = None
+    description: Optional[str] = None
+
+class WalletMasterUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    color: Optional[str] = None
+    image: Optional[str] = None
+    description: Optional[str] = None
 
 class CategoryCreate(BaseModel):
     name: str
@@ -718,6 +733,144 @@ def delete_account(acc_id: str, current_user: User = Depends(get_current_user), 
     
     db.commit()
     return {"message": "Rekening dan seluruh transaksi terkait berhasil dihapus (soft-delete)"}
+
+
+# =========================================================================
+# Protected Wallet Masters Endpoints
+# =========================================================================
+@app.get("/api/wallet-masters")
+def get_wallet_masters(current_user: Optional[User] = Depends(get_optional_current_user), db: Session = Depends(get_db)):
+    tenant_ids = []
+    if current_user:
+        tenant_ids = get_user_tenant_ids(current_user, db)
+    
+    query = select(WalletMaster).where(
+        or_(
+            WalletMaster.is_system == True,
+            WalletMaster.tenant_id.is_(None),
+            WalletMaster.tenant_id.in_(tenant_ids) if tenant_ids else False
+        )
+    ).order_by(WalletMaster.is_system.desc(), WalletMaster.name.asc())
+    
+    masters = db.execute(query).scalars().all()
+    results = []
+    for m in masters:
+        results.append({
+            "id": str(m.id),
+            "code": m.code,
+            "name": m.name,
+            "category": m.category,
+            "color": m.color or "#007AFF",
+            "image": m.image or "",
+            "description": m.description or "",
+            "is_system": m.is_system,
+            "tenant_id": str(m.tenant_id) if m.tenant_id else None
+        })
+    return results
+
+
+@app.post("/api/wallet-masters")
+def create_wallet_master(payload: WalletMasterCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    tenant_ids = get_user_tenant_ids(current_user, db)
+    if not tenant_ids:
+        raise HTTPException(status_code=400, detail="Pengguna tidak memiliki workspace aktif")
+    tenant_id = tenant_ids[0]
+    
+    code = payload.code.strip().lower() if payload.code else re.sub(r'[^a-z0-9]', '', payload.name.lower())
+    if not code:
+        code = f"custom-{uuid.uuid4().hex[:6]}"
+        
+    new_wm = WalletMaster(
+        tenant_id=tenant_id,
+        code=code,
+        name=payload.name.strip(),
+        category=payload.category,
+        color=payload.color or "#007AFF",
+        image=payload.image or "/wallets/wallet.svg",
+        description=payload.description.strip() if payload.description else "",
+        is_system=False
+    )
+    db.add(new_wm)
+    db.commit()
+    db.refresh(new_wm)
+    return {
+        "id": str(new_wm.id),
+        "code": new_wm.code,
+        "name": new_wm.name,
+        "category": new_wm.category,
+        "color": new_wm.color,
+        "image": new_wm.image,
+        "description": new_wm.description,
+        "is_system": False,
+        "tenant_id": str(new_wm.tenant_id)
+    }
+
+
+@app.put("/api/wallet-masters/{wm_id}")
+def update_wallet_master(wm_id: str, payload: WalletMasterUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    tenant_ids = get_user_tenant_ids(current_user, db)
+    if not tenant_ids:
+        raise HTTPException(status_code=400, detail="Pengguna tidak memiliki workspace aktif")
+    try:
+        w_uuid = uuid.UUID(wm_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID Master Dompet tidak valid")
+        
+    wm = db.execute(select(WalletMaster).where(WalletMaster.id == w_uuid)).scalar_one_or_none()
+    if not wm:
+        raise HTTPException(status_code=404, detail="Master Dompet tidak ditemukan")
+    if wm.is_system:
+        raise HTTPException(status_code=403, detail="Master Dompet sistem bawaan tidak dapat diubah")
+    if wm.tenant_id not in tenant_ids:
+        raise HTTPException(status_code=403, detail="Anda tidak memiliki akses ke Master Dompet ini")
+        
+    if payload.name:
+        wm.name = payload.name.strip()
+    if payload.category:
+        wm.category = payload.category
+    if payload.color:
+        wm.color = payload.color
+    if payload.image:
+        wm.image = payload.image
+    if payload.description is not None:
+        wm.description = payload.description.strip()
+        
+    db.commit()
+    db.refresh(wm)
+    return {
+        "id": str(wm.id),
+        "code": wm.code,
+        "name": wm.name,
+        "category": wm.category,
+        "color": wm.color,
+        "image": wm.image,
+        "description": wm.description,
+        "is_system": False,
+        "tenant_id": str(wm.tenant_id)
+    }
+
+
+@app.delete("/api/wallet-masters/{wm_id}")
+def delete_wallet_master(wm_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    tenant_ids = get_user_tenant_ids(current_user, db)
+    if not tenant_ids:
+        raise HTTPException(status_code=400, detail="Pengguna tidak memiliki workspace aktif")
+    try:
+        w_uuid = uuid.UUID(wm_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID Master Dompet tidak valid")
+        
+    wm = db.execute(select(WalletMaster).where(WalletMaster.id == w_uuid)).scalar_one_or_none()
+    if not wm:
+        raise HTTPException(status_code=404, detail="Master Dompet tidak ditemukan")
+    if wm.is_system:
+        raise HTTPException(status_code=403, detail="Master Dompet bawaan sistem tidak dapat dihapus")
+    if wm.tenant_id not in tenant_ids:
+        raise HTTPException(status_code=403, detail="Anda tidak memiliki izin menghapus Master Dompet ini")
+        
+    db.delete(wm)
+    db.commit()
+    return {"message": "Master Dompet berhasil dihapus"}
 
 
 # =========================================================================

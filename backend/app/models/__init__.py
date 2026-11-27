@@ -11,6 +11,7 @@ from app.models.financial import (
     FinancialGoal,
     GoalContribution,
     RecurringTransaction,
+    WalletMaster,
 )
 from app.models.investment import (
     InvestmentAsset,

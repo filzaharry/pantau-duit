@@ -60,6 +60,18 @@ export interface Permission {
 export type AccountType = 'BANK' | 'CASH' | 'E_WALLET' | 'CREDIT_CARD' | 'INVESTMENT' | 'OTHER';
 export type AccountStatus = 'ACTIVE' | 'ARCHIVED' | 'CLOSED';
 
+export interface WalletMaster {
+	id: UUID;
+	tenant_id?: UUID | null;
+	code: string;
+	name: string;
+	category: 'BANK' | 'E_WALLET' | 'CASH' | 'INVESTMENT' | 'OTHER';
+	color: string;
+	image?: string;
+	description?: string;
+	is_system: boolean;
+}
+
 export interface Account {
 	id: UUID;
 	tenant_id: UUID;

@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { ChevronDown, Search, Check } from 'lucide-svelte';
 
-	interface Option {
+	export interface Option {
 		value: string;
 		label: string;
 		sublabel?: string;
+		image?: string;
+		badge?: string;
+		extra?: string;
 	}
 
 	interface Props {
@@ -102,13 +105,30 @@
 		type="button"
 		{disabled}
 		onclick={toggleOpen}
-		class="w-full h-9 flex items-center justify-between px-3 rounded-xl text-xs sm:text-sm bg-white dark:bg-[#151E2E] border border-slate-200/80 dark:border-white/10 hover:border-[#007AFF] text-left transition-colors focus:outline-none focus:ring-1 focus:ring-[#007AFF]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+		class="w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs sm:text-sm bg-white dark:bg-[#151E2E] border border-slate-200/80 dark:border-white/10 hover:border-[#007AFF] text-left transition-colors focus:outline-none focus:ring-1 focus:ring-[#007AFF]/20 disabled:opacity-50 disabled:cursor-not-allowed"
 	>
-		<span class="truncate font-medium {selectedOption ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}">
-			{selectedOption ? selectedOption.label : placeholder}
-		</span>
+		<div class="flex items-center gap-2 min-w-0 flex-1 mr-2">
+			{#if selectedOption?.image}
+				<div class="w-5 h-5 rounded-md bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
+					<img src={selectedOption.image} alt="" class="w-full h-full object-contain rounded" />
+				</div>
+			{/if}
+			<span class="truncate font-medium {selectedOption ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'}">
+				{selectedOption ? selectedOption.label : placeholder}
+			</span>
+			{#if selectedOption?.badge}
+				<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 dark:bg-white/10 text-slate-500 shrink-0">
+					{selectedOption.badge}
+				</span>
+			{/if}
+			{#if selectedOption?.extra}
+				<span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 ml-auto shrink-0">
+					{selectedOption.extra}
+				</span>
+			{/if}
+		</div>
 		<ChevronDown
-			class="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 ml-2 transition-transform duration-200 {isOpen ? 'rotate-180 text-[#007AFF]' : ''}"
+			class="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0 ml-1 transition-transform duration-200 {isOpen ? 'rotate-180 text-[#007AFF]' : ''}"
 		/>
 	</button>
 
@@ -145,11 +165,27 @@
 								? 'bg-[#007AFF]/10 text-[#007AFF] font-semibold'
 								: 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5'}"
 						>
-							<div class="truncate mr-2">
-								<span class="block truncate">{opt.label}</span>
-								{#if opt.sublabel}
-									<span class="block text-[10px] text-slate-400">{opt.sublabel}</span>
+							<div class="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+								{#if opt.image}
+									<div class="w-7 h-7 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 flex items-center justify-center shrink-0 p-0.5 overflow-hidden">
+										<img src={opt.image} alt="" class="w-full h-full object-contain rounded" />
+									</div>
 								{/if}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-center gap-1.5">
+										<span class="truncate block font-medium">{opt.label}</span>
+										{#if opt.badge}
+											<span class="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 dark:bg-white/10 text-slate-500 shrink-0">
+												{opt.badge}
+											</span>
+										{/if}
+									</div>
+									{#if opt.extra}
+										<span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">{opt.extra}</span>
+									{:else if opt.sublabel}
+										<span class="text-[10px] text-slate-400 block truncate">{opt.sublabel}</span>
+									{/if}
+								</div>
 							</div>
 							{#if isSelected}
 								<Check class="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
