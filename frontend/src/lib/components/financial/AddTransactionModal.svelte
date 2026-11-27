@@ -39,9 +39,11 @@
 
 	const selectedAccount = $derived(financialStore.accounts.find((a) => a.id === accountId));
 
-	// Keep account & category in sync with active financial store data
+	let lastOpen = false;
+
+	// Reset / initialize form only once when modal opens
 	$effect(() => {
-		if (open) {
+		if (open && !lastOpen) {
 			if (defaultAccountId) {
 				accountId = defaultAccountId;
 			} else if (!financialStore.accounts.some((a) => a.id === accountId)) {
@@ -53,18 +55,21 @@
 				transactionType = initialType;
 			}
 
-			if (transactionType === 'TRANSFER' && destinationAccountId === accountId) {
-				const other = financialStore.accounts.find((a) => a.id !== accountId);
-				if (other) destinationAccountId = other.id;
-			}
-
-			const cat = financialStore.categories.find((c) => c.type === transactionType);
-			if (!financialStore.categories.some((c) => c.id === categoryId && c.type === transactionType)) {
+			const targetType = initialType || transactionType;
+			if (targetType === 'TRANSFER') {
+				if (destinationAccountId === accountId) {
+					const other = financialStore.accounts.find((a) => a.id !== accountId);
+					if (other) destinationAccountId = other.id;
+				}
+			} else {
+				const cat = financialStore.categories.find((c) => c.type === targetType);
 				if (cat) categoryId = cat.id;
 			}
 		}
+		lastOpen = open;
 	});
 
+	// React to tab switching when user clicks Pengeluaran, Pemasukan, or Transfer
 	$effect(() => {
 		if (transactionType === 'EXPENSE') {
 			const cat = financialStore.categories.find((c) => c.type === 'EXPENSE');
@@ -72,14 +77,11 @@
 		} else if (transactionType === 'INCOME') {
 			const cat = financialStore.categories.find((c) => c.type === 'INCOME');
 			if (cat) categoryId = cat.id;
-		}
-	});
-
-	// Keep destination account different from source account
-	$effect(() => {
-		if (transactionType === 'TRANSFER' && destinationAccountId === accountId) {
-			const other = financialStore.accounts.find((a) => a.id !== accountId);
-			if (other) destinationAccountId = other.id;
+		} else if (transactionType === 'TRANSFER') {
+			if (destinationAccountId === accountId) {
+				const other = financialStore.accounts.find((a) => a.id !== accountId);
+				if (other) destinationAccountId = other.id;
+			}
 		}
 	});
 
