@@ -47,3 +47,54 @@ export function getWalletImage(icon?: string, type?: string): string {
 			return '/wallets/wallet.svg';
 	}
 }
+
+export function getWalletColor(icon?: string, type?: string, explicitColor?: string, name?: string): string {
+	if (explicitColor && explicitColor !== '#007AFF' && explicitColor !== '#000000') {
+		return explicitColor;
+	}
+
+	const lowerName = (name || '').toLowerCase();
+	if (lowerName.includes('emas') || lowerName.includes('gold')) {
+		return '#D97706';
+	}
+	if (lowerName.includes('bitcoin') || lowerName.includes('btc') || lowerName.includes('crypto')) {
+		return '#F59E0B';
+	}
+
+	if (icon) {
+		const preset = WALLET_PRESETS.find((p) => p.id.toLowerCase() === icon.toLowerCase());
+		if (preset?.color) return preset.color;
+	}
+
+	switch (type) {
+		case 'BANK':
+			return '#0060C4';
+		case 'E_WALLET':
+			return '#00AED6';
+		case 'CASH':
+			return '#10B981';
+		case 'INVESTMENT':
+			return '#D97706';
+		case 'OTHER':
+			return '#EC4899';
+		default:
+			return explicitColor || '#007AFF';
+	}
+}
+
+export function hexToRgba(hex: string, alpha: number): string {
+	if (!hex) return `rgba(0, 122, 255, ${alpha})`;
+	let clean = hex.replace('#', '').trim();
+	if (clean.length === 3) {
+		clean = clean.split('').map((c) => c + c).join('');
+	}
+	if (clean.length !== 6) {
+		return `rgba(0, 122, 255, ${alpha})`;
+	}
+	const num = parseInt(clean, 16);
+	if (isNaN(num)) return `rgba(0, 122, 255, ${alpha})`;
+	const r = (num >> 16) & 255;
+	const g = (num >> 8) & 255;
+	const b = num & 255;
+	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}

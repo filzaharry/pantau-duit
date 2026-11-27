@@ -84,6 +84,7 @@
 	let editName = $state('');
 	let editAccountNumber = $state('');
 	let editIcon = $state('bca');
+	let editColor = $state('');
 	let editError = $state('');
 
 	function openEditModal(account: Account) {
@@ -91,6 +92,7 @@
 		editName = account.name;
 		editAccountNumber = account.account_number || '';
 		editIcon = account.icon || 'bca';
+		editColor = account.color || '';
 		editError = '';
 		isEditAccountOpen = true;
 	}
@@ -105,7 +107,8 @@
 		await financialStore.updateAccount(accountToEdit.id, {
 			name: editName.trim(),
 			account_number: editAccountNumber.trim(),
-			icon: editIcon
+			icon: editIcon,
+			color: editColor || accountToEdit.color
 		});
 
 		isEditAccountOpen = false;
@@ -119,6 +122,7 @@
 	let initialBalance = $state(0);
 	let accountNumber = $state('');
 	let selectedIcon = $state('bca');
+	let selectedColor = $state('#0060C4');
 	let formError = $state('');
 
 	async function handleAddAccount() {
@@ -134,7 +138,8 @@
 			opening_balance: initialBalance,
 			account_number: accountNumber.trim(),
 			institution_name: institutionName.trim(),
-			icon: selectedIcon
+			icon: selectedIcon,
+			color: selectedColor
 		});
 
 		isAddAccountOpen = false;
@@ -143,6 +148,7 @@
 		initialBalance = 0;
 		accountNumber = '';
 		selectedIcon = 'bca';
+		selectedColor = '#0060C4';
 	}
 
 	// Calculate counts & balances
@@ -366,6 +372,7 @@
 							type="button"
 							onclick={() => {
 								selectedIcon = preset.id;
+								selectedColor = preset.color;
 								if (!accountName.trim() || accountName === 'Bank BCA') {
 									accountName = preset.name;
 								}
@@ -445,7 +452,10 @@
 					{#each availablePresets as preset}
 						<button
 							type="button"
-							onclick={() => (editIcon = preset.id)}
+							onclick={() => {
+								editIcon = preset.id;
+								editColor = preset.color;
+							}}
 							class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {editIcon === preset.id ? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm' : 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"
 							title={preset.name}
 						>

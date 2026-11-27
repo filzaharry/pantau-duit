@@ -3,7 +3,7 @@
 	import { financialStore } from '$lib/stores/financial.svelte';
 	import { notificationStore } from '$lib/stores/notifications.svelte';
 	import { formatRupiah, formatDate } from '$lib/utils/formatters';
-	import { getWalletImage, WALLET_PRESETS } from '$lib/utils/walletIcons';
+	import { getWalletImage, getWalletColor, hexToRgba, WALLET_PRESETS } from '$lib/utils/walletIcons';
 	import type { AccountType, Transaction } from '$lib/types';
 	import Table, { type TableColumn } from '$lib/components/ui/Table.svelte';
 	import Modal from '$lib/components/ui/Modal.svelte';
@@ -32,6 +32,7 @@
 
 	const account = $derived(financialStore.accounts.find((a) => a.id === data.id));
 	const walletImage = $derived(account ? getWalletImage(account.icon, account.type) : '/wallets/wallet.svg');
+	const brandColor = $derived(account ? getWalletColor(account.icon, account.type, account.color, account.name) : '#007AFF');
 
 	// Modals
 	let isTransferModalOpen = $state(false);
@@ -43,6 +44,7 @@
 	let editName = $state('');
 	let editAccountNumber = $state('');
 	let editIcon = $state('bca');
+	let editColor = $state('');
 	let editType = $state<AccountType>('BANK');
 	let editError = $state('');
 	let isSavingEdit = $state(false);
@@ -52,6 +54,7 @@
 			editName = account.name;
 			editAccountNumber = account.account_number || '';
 			editIcon = account.icon || 'bca';
+			editColor = account.color || '';
 			editType = account.type;
 		}
 	});
@@ -73,6 +76,7 @@
 		editName = account.name;
 		editAccountNumber = account.account_number || '';
 		editIcon = account.icon || 'bca';
+		editColor = account.color || '';
 		editType = account.type;
 		editError = '';
 		isEditModalOpen = true;
@@ -91,7 +95,8 @@
 				name: editName.trim(),
 				type: editType,
 				account_number: editAccountNumber.trim(),
-				icon: editIcon
+				icon: editIcon,
+				color: editColor || account.color
 			});
 			isEditModalOpen = false;
 		} finally {
@@ -195,11 +200,31 @@
 		</div>
 	{:else}
 		<!-- Hero Detail Card -->
-		<div class="p-5 sm:p-7 rounded-3xl bg-gradient-to-b from-white via-white/95 to-slate-50/90 dark:from-[#151926] dark:via-[#131622] dark:to-[#0f121d] border border-slate-200/80 dark:border-white/10 shadow-sm relative overflow-hidden">
-			<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+		<div
+			class="p-5 sm:p-7 rounded-3xl bg-white dark:bg-[#151926] border shadow-sm relative overflow-hidden"
+			style="
+				border-color: {hexToRgba(brandColor, 0.28)};
+				box-shadow: 0 8px 30px -6px {hexToRgba(brandColor, 0.08)};
+			"
+		>
+			<!-- Subtle Brand Tint Overlay with opacity -->
+			<div
+				class="absolute inset-0 pointer-events-none"
+				style="background: linear-gradient(135deg, {hexToRgba(brandColor, 0.07)} 0%, {hexToRgba(brandColor, 0.14)} 100%);"
+			></div>
+			<!-- Ambient soft radial light -->
+			<div
+				class="absolute -top-16 -right-16 w-52 h-52 rounded-full pointer-events-none blur-3xl opacity-35"
+				style="background: {brandColor};"
+			></div>
+
+			<div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
 				<!-- Left: Identity & Live Balance -->
 				<div class="flex items-start sm:items-center gap-4 sm:gap-5 min-w-0">
-					<div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl p-2 bg-slate-50 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+					<div
+						class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl p-2 border flex items-center justify-center shrink-0 shadow-xs overflow-hidden"
+						style="background-color: {hexToRgba(brandColor, 0.12)}; border-color: {hexToRgba(brandColor, 0.25)};"
+					>
 						<img src={walletImage} alt={account.name} class="w-full h-full object-contain rounded-xl" />
 					</div>
 					<div class="min-w-0 space-y-1">
@@ -207,11 +232,14 @@
 							<h1 class="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight truncate">
 								{account.name}
 							</h1>
-							<span class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold bg-blue-500/10 text-[#007AFF] dark:text-[#0A84FF] uppercase tracking-wider">
+							<span
+								class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider"
+								style="background-color: {hexToRgba(brandColor, 0.15)}; color: {brandColor};"
+							>
 								{account.type.replace('_', ' ')}
 							</span>
 							<span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-								<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+								<span class="w-2 h-2 rounded-full" style="background-color: {brandColor};"></span>
 								<span>Aktif</span>
 							</span>
 						</div>
@@ -389,6 +417,8 @@
 				badge="{accountTransactions.length} Transaksi"
 				columns={txColumns}
 				items={accountTransactions}
+				defaultSortKey="transaction_date"
+				defaultSortDirection="desc"
 				emptyMessage="Belum ada transaksi di dompet ini"
 				emptyDescription="Transaksi pemasukan, pengeluaran, atau transfer yang menggunakan rekening ini akan muncul di sini."
 			>
@@ -483,7 +513,10 @@
 						{#each availablePresets as preset}
 							<button
 								type="button"
-								onclick={() => (editIcon = preset.id)}
+								onclick={() => {
+									editIcon = preset.id;
+									editColor = preset.color;
+								}}
 								class="p-1.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer {editIcon === preset.id
 									? 'border-[#007AFF] bg-blue-50/50 dark:bg-blue-500/10 ring-2 ring-[#007AFF]/30 scale-105 shadow-sm'
 									: 'border-transparent hover:border-slate-200 dark:hover:border-white/10 hover:bg-white dark:hover:bg-white/5'}"

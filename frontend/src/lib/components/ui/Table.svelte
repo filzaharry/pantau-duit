@@ -105,7 +105,8 @@
 			}
 		} else {
 			sortKey = key;
-			sortDirection = 'asc';
+			const isDateCol = key.toLowerCase().includes('date') || key.toLowerCase().includes('tanggal') || key.toLowerCase().includes('created') || key.toLowerCase().includes('time');
+			sortDirection = isDateCol ? 'desc' : 'asc';
 		}
 		// Reset to first page when sort changes
 		currentPage = 1;
@@ -141,6 +142,23 @@
 						: aVal
 							? 1
 							: -1;
+			}
+
+			// Date parsing for date columns
+			const isDateCol = sortKey!.toLowerCase().includes('date') || sortKey!.toLowerCase().includes('tanggal') || sortKey!.toLowerCase().includes('created') || sortKey!.toLowerCase().includes('time');
+			if (isDateCol) {
+				const aTime = Date.parse(String(aVal));
+				const bTime = Date.parse(String(bVal));
+				if (!isNaN(aTime) && !isNaN(bTime)) {
+					if (aTime !== bTime) {
+						return sortDirection === 'asc' ? aTime - bTime : bTime - aTime;
+					}
+					const aCreated = (a as any).created_at ? Date.parse((a as any).created_at) : 0;
+					const bCreated = (b as any).created_at ? Date.parse((b as any).created_at) : 0;
+					if (aCreated !== bCreated) {
+						return sortDirection === 'asc' ? aCreated - bCreated : bCreated - aCreated;
+					}
+				}
 			}
 
 			const aStr = String(aVal).toLowerCase();

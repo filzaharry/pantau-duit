@@ -484,7 +484,16 @@ class FinancialStore {
 	}
 
 	get transactions(): Transaction[] {
-		return authStore.isSuperuser ? this.platformTransactions : this.personalTransactions;
+		const raw = authStore.isSuperuser ? this.platformTransactions : this.personalTransactions;
+		return [...raw].sort((a, b) => {
+			const timeA = new Date(a.transaction_date).getTime();
+			const timeB = new Date(b.transaction_date).getTime();
+			if (timeB !== timeA) return timeB - timeA;
+			const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+			const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+			if (createdB !== createdA) return createdB - createdA;
+			return String(b.id || '').localeCompare(String(a.id || ''));
+		});
 	}
 	set transactions(val: Transaction[]) {
 		if (authStore.isSuperuser) {

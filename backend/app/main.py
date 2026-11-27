@@ -1026,7 +1026,7 @@ def get_transactions(current_user: User = Depends(get_current_user), db: Session
         select(Transaction).where(
             Transaction.tenant_id.in_(tenant_ids),
             Transaction.deleted_at.is_(None)
-        ).order_by(desc(Transaction.transaction_date))
+        ).order_by(desc(Transaction.transaction_date), desc(Transaction.created_at))
     ).scalars().all()
     
     results = []
@@ -1056,7 +1056,9 @@ def get_transactions(current_user: User = Depends(get_current_user), db: Session
             "destination_account_name": dest_acc.name if dest_acc else None,
             "category_name": cat.name if cat else "Umum",
             "category_icon": cat.icon if cat else "tag",
-            "category_color": cat.color if cat else "#007AFF"
+            "category_color": cat.color if cat else "#007AFF",
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None
         })
     return results
 

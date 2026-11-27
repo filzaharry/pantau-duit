@@ -447,6 +447,8 @@
 		badge="{filteredTransactions.length} Transaksi"
 		{columns}
 		items={filteredTransactions}
+		defaultSortKey="transaction_date"
+		defaultSortDirection="desc"
 		emptyMessage={financialStore.accounts.length === 0 ? "Belum ada rekening atau dompet terdaftar" : "Tidak ada transaksi yang cocok"}
 		emptyDescription={financialStore.accounts.length === 0 ? "Tambahkan rekening bank atau dompet digital pertama Anda di menu Dompet & Rekening sebelum mencatat transaksi." : "Coba ubah kata kunci pencarian atau sesuaikan filter di tombol Filter."}
 	>
